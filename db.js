@@ -9,6 +9,8 @@ if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir);
 const adapter = new FileSync(path.join(dataDir, 'db.json'));
 const db = low(adapter);
 
+const crypto = require('crypto');
+
 db.defaults({
   settings: {
     smtp: { host: '', port: 587, secure: false, user: '', pass: '', fromName: '', fromEmail: '' },
@@ -18,14 +20,31 @@ db.defaults({
     aiPersonalizeEmails: false,
     delayMinSec: 8,
     delayMaxSec: 20,
-    dailyLimit: 300
+    dailyLimit: 300,
+    leadWebhookSecret: crypto.randomBytes(16).toString('hex'),
+    sms: {
+      provider: 'twilio',
+      accountSid: '',
+      authToken: '',
+      fromNumber: '',
+      delayMinSec: 5,
+      delayMaxSec: 15,
+      dailyLimit: 200
+    },
+    smsStatus: { ok: null, message: '', checkedAt: null }
   },
   templates: [],
   contacts: [],
   suppression: [],
   campaigns: [],
   logs: [],
-  clicks: []
+  clicks: [],
+  leads: [],
+  smsContacts: [],
+  smsTemplates: [],
+  smsSuppression: [],
+  smsCampaigns: [],
+  smsLogs: []
 }).write();
 
 module.exports = db;

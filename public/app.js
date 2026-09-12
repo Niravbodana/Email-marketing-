@@ -89,6 +89,17 @@ async function loadSettings() {
   setStatusDot($('smtpStatusDot'), $('smtpStatusText'), s.smtpStatus);
   apiKeys = (s.apiKeys && s.apiKeys.length) ? s.apiKeys : [{ id: 'default-anthropic', name: 'Anthropic', key: '', status: { ok: null, message: '' } }];
   renderApiKeyList();
+
+  $('smsSid').value = s.sms?.accountSid || '';
+  $('smsToken').value = s.sms?.authToken || '';
+  $('smsFrom').value = s.sms?.fromNumber || '';
+  $('smsDelayMin').value = s.sms?.delayMinSec ?? 5;
+  $('smsDelayMax').value = s.sms?.delayMaxSec ?? 15;
+  $('smsDailyLimit').value = s.sms?.dailyLimit ?? 200;
+  setStatusDot($('smsStatusDot'), $('smsStatusText'), s.smsStatus);
+
+  $('webhookUrl').value = `${window.location.origin}/api/leads/webhook`;
+  $('webhookSecret').value = s.leadWebhookSecret || '';
 }
 
 $('testSmtpBtn').addEventListener('click', async () => {
@@ -114,6 +125,21 @@ $('testSmtpBtn').addEventListener('click', async () => {
   }
 });
 
+$('testSmsBtn').addEventListener('click', async () => {
+  $('smsTestMsg').textContent = 'Testing...';
+  $('smsTestMsg').className = 'msg';
+  try {
+    const sms = { accountSid: $('smsSid').value, authToken: $('smsToken').value, fromNumber: $('smsFrom').value };
+    const result = await api('/api/settings/test-sms', { method: 'POST', body: JSON.stringify({ sms }) });
+    setStatusDot($('smsStatusDot'), $('smsStatusText'), result);
+    $('smsTestMsg').textContent = result.ok ? '✅ Connection successful!' : `❌ ${result.message}`;
+    $('smsTestMsg').className = result.ok ? 'msg' : 'msg error';
+  } catch (e) {
+    $('smsTestMsg').textContent = e.message;
+    $('smsTestMsg').className = 'msg error';
+  }
+});
+
 $('saveSettings').addEventListener('click', async () => {
   try {
     await api('/api/settings', {
@@ -132,7 +158,16 @@ $('saveSettings').addEventListener('click', async () => {
         aiPersonalizeEmails: $('aiPersonalize').checked,
         delayMinSec: Number($('delayMin').value) || 8,
         delayMaxSec: Number($('delayMax').value) || 20,
-        dailyLimit: Number($('dailyLimit').value) || 300
+        dailyLimit: Number($('dailyLimit').value) || 300,
+        sms: {
+          provider: 'twilio',
+          accountSid: $('smsSid').value,
+          authToken: $('smsToken').value,
+          fromNumber: $('smsFrom').value,
+          delayMinSec: Number($('smsDelayMin').value) || 5,
+          delayMaxSec: Number($('smsDelayMax').value) || 15,
+          dailyLimit: Number($('smsDailyLimit').value) || 200
+        }
       })
     });
     $('settingsMsg').textContent = 'Settings saved.';
@@ -235,7 +270,9 @@ async function loadContacts() {
   $('contactCount').textContent = contacts.length;
   $('contactList').innerHTML = contacts.map((c) => `
     <div class="list-row">
-      <span>${c.email} ${c.name ? `(${c.name})` : ''} &mdash; <span class="status-${c.status}">${c.status}</span></span>
+      <span>${c.email} ${c.name ? `(${c.name})` : ''} &mdash; <span class="status-${c.status}">${c.status}</span>
+        <span class="tag-editor" data-id="${c.id}" title="Click to edit tags">🏷️ ${(c.tags || []).join(', ') || 'add tags'}</span>
+      </span>
       <button data-id="${c.id}" class="deleteContact">Remove</button>
     </div>`).join('') || '<div class="list-row">No contacts yet. Paste bulk data above and extract.</div>';
 
@@ -245,6 +282,26 @@ async function loadContacts() {
       loadContacts();
     });
   });
+
+  document.querySelectorAll('.tag-editor').forEach((el) => {
+    el.addEventListener('click', async () => {
+      const current = contacts.find((c) => c.id === el.dataset.id)?.tags || [];
+      const input = window.prompt('Tags (comma-separated):', current.join(', '));
+      if (input === null) return;
+      const tags = input.split(',').map((t) => t.trim()).filter(Boolean);
+      await api(`/api/contacts/${el.dataset.id}/tags`, { method: 'PATCH', body: JSON.stringify({ tags }) });
+      loadContacts();
+      loadCampaignTags();
+    });
+  });
+}
+
+async function loadCampaignTags() {
+  const tags = await api('/api/contacts/tags');
+  const select = $('campaignTag');
+  const current = select.value;
+  select.innerHTML = '<option value="">All contacts</option>' + tags.map((t) => `<option value="${t}">${t}</option>`).join('');
+  if (tags.includes(current)) select.value = current;
 }
 
 $('extractBtn').addEventListener('click', async () => {
@@ -296,11 +353,25 @@ $('healthCheckBtn').addEventListener('click', async () => {
 let currentCampaignId = null;
 let pollTimer = null;
 
+$('scheduleToggle').addEventListener('change', (e) => {
+  $('scheduleTimeRow').hidden = !e.target.checked;
+});
+
 $('startCampaign').addEventListener('click', async () => {
   try {
     const templateId = $('campaignTemplate').value;
     if (!templateId) return alert('Save a template first.');
-    const campaign = await api('/api/campaign/start', { method: 'POST', body: JSON.stringify({ templateId }) });
+    const body = { templateId, tag: $('campaignTag').value || undefined };
+    if ($('scheduleToggle').checked) {
+      if (!$('scheduleTime').value) return alert('Schedule time choose karo.');
+      body.scheduledAt = new Date($('scheduleTime').value).toISOString();
+    }
+    const campaign = await api('/api/campaign/start', { method: 'POST', body: JSON.stringify(body) });
+    if (campaign.status === 'scheduled') {
+      $('campaignStatus').innerHTML = `⏰ Scheduled for ${new Date(campaign.scheduledAt).toLocaleString()} — ${campaign.total} contact(s).`;
+      loadCampaignList();
+      return;
+    }
     currentCampaignId = campaign.id;
     $('startCampaign').disabled = true;
     $('stopCampaign').disabled = false;
@@ -329,7 +400,17 @@ async function pollStatus() {
     clearInterval(pollTimer);
     $('startCampaign').disabled = false;
     $('stopCampaign').disabled = true;
+    loadCampaignList();
   }
+}
+
+async function loadCampaignList() {
+  const campaigns = await api('/api/campaigns');
+  $('campaignList').innerHTML = campaigns.slice(0, 20).map((c) => `
+    <div class="list-row">
+      <span>${c.status === 'scheduled' ? `⏰ Scheduled for ${new Date(c.scheduledAt).toLocaleString()}` : new Date(c.createdAt).toLocaleString()}</span>
+      <span>${c.status} &mdash; sent ${c.sent}/${c.total}</span>
+    </div>`).join('') || '<div class="list-row">Koi campaign nahi hui abhi.</div>';
 }
 
 // ---------- Dashboard ----------
@@ -398,8 +479,128 @@ setInterval(() => {
   if (document.getElementById('tab-dashboard').classList.contains('active')) loadDashboard();
 }, 5000);
 
+// ================= SMS MARKETING =================
+async function loadSmsDashboard() {
+  const d = await api('/api/sms/dashboard');
+  $('smsCardTotal').textContent = d.total;
+  $('smsCardSent').textContent = d.sent;
+  $('smsCardFailed').textContent = d.failed;
+  $('smsCardSuppressed').textContent = d.suppressed;
+}
+
+async function loadSmsContacts() {
+  const contacts = await api('/api/sms/contacts');
+  $('smsContactList').innerHTML = contacts.map((c) => `
+    <div class="list-row">
+      <span>${c.phone} ${c.name ? `(${c.name})` : ''} &mdash; <span class="status-${c.status}">${c.status}</span></span>
+      <button data-id="${c.id}" class="deleteSmsContact">Remove</button>
+    </div>`).join('') || '<div class="list-row">No SMS contacts yet.</div>';
+
+  document.querySelectorAll('.deleteSmsContact').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      await api(`/api/sms/contacts/${btn.dataset.id}`, { method: 'DELETE' });
+      loadSmsContacts();
+    });
+  });
+}
+
+$('smsExtractBtn').addEventListener('click', async () => {
+  const rawText = $('smsRawData').value.trim();
+  if (!rawText) return;
+  try {
+    const result = await api('/api/sms/contacts/extract', { method: 'POST', body: JSON.stringify({ rawText }) });
+    $('smsExtractMsg').textContent = `Found ${result.totalExtracted} number(s), added ${result.addedCount} new contact(s).`;
+    $('smsRawData').value = '';
+    loadSmsContacts();
+    loadSmsDashboard();
+  } catch (e) {
+    $('smsExtractMsg').textContent = e.message;
+    $('smsExtractMsg').className = 'msg error';
+  }
+});
+
+async function loadSmsTemplates() {
+  const templates = await api('/api/sms/templates');
+  $('smsTemplateList').innerHTML = templates.map((t) => `
+    <div class="list-row">
+      <span>${t.name} &mdash; <em>${t.body.slice(0, 60)}${t.body.length > 60 ? '...' : ''}</em></span>
+      <button data-id="${t.id}" class="deleteSmsTemplate">Delete</button>
+    </div>`).join('') || '<div class="list-row">No SMS templates yet.</div>';
+
+  $('smsCampaignTemplate').innerHTML = templates.map((t) => `<option value="${t.id}">${t.name}</option>`).join('');
+
+  document.querySelectorAll('.deleteSmsTemplate').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      await api(`/api/sms/templates/${btn.dataset.id}`, { method: 'DELETE' });
+      loadSmsTemplates();
+    });
+  });
+}
+
+$('smsSaveTemplate').addEventListener('click', async () => {
+  try {
+    await api('/api/sms/templates', {
+      method: 'POST',
+      body: JSON.stringify({ name: $('smsTplName').value, body: $('smsTplBody').value, ctaUrl: $('smsTplCtaUrl').value })
+    });
+    $('smsTemplateMsg').textContent = 'SMS template saved.';
+    $('smsTemplateMsg').className = 'msg';
+    $('smsTplName').value = '';
+    $('smsTplBody').value = '';
+    loadSmsTemplates();
+  } catch (e) {
+    $('smsTemplateMsg').textContent = e.message;
+    $('smsTemplateMsg').className = 'msg error';
+  }
+});
+
+let currentSmsCampaignId = null;
+let smsPollTimer = null;
+
+$('smsStartCampaign').addEventListener('click', async () => {
+  try {
+    const templateId = $('smsCampaignTemplate').value;
+    if (!templateId) return alert('Save an SMS template first.');
+    const campaign = await api('/api/sms/campaign/start', { method: 'POST', body: JSON.stringify({ templateId }) });
+    currentSmsCampaignId = campaign.id;
+    $('smsStartCampaign').disabled = true;
+    $('smsStopCampaign').disabled = false;
+    pollSmsStatus();
+    smsPollTimer = setInterval(pollSmsStatus, 3000);
+  } catch (e) {
+    $('smsCampaignStatus').textContent = e.message;
+    $('smsCampaignStatus').className = 'msg error';
+  }
+});
+
+$('smsStopCampaign').addEventListener('click', async () => {
+  if (!currentSmsCampaignId) return;
+  await api(`/api/sms/campaign/${currentSmsCampaignId}/stop`, { method: 'POST' });
+});
+
+async function pollSmsStatus() {
+  if (!currentSmsCampaignId) return;
+  const { campaign, logs } = await api(`/api/sms/campaign/${currentSmsCampaignId}/status`);
+  $('smsCampaignStatus').innerHTML = `Status: <b>${campaign.status}</b> &mdash; Sent: ${campaign.sent} / Failed: ${campaign.failed} / Skipped: ${campaign.skipped} / Total: ${campaign.total}`;
+  $('smsCampaignLogs').innerHTML = logs.slice().reverse().map((l) => `
+    <div class="list-row"><span>${l.phone}</span><span class="status-${l.status}">${l.status}${l.error ? ` (${l.error})` : ''}</span></div>
+  `).join('');
+
+  if (campaign.status === 'completed' || campaign.status === 'stopped') {
+    clearInterval(smsPollTimer);
+    $('smsStartCampaign').disabled = false;
+    $('smsStopCampaign').disabled = true;
+    loadSmsDashboard();
+  }
+}
+
 loadSettings();
 loadTemplates();
 loadContacts();
 loadHealth();
 loadDashboard();
+loadCampaignTags();
+loadCampaignList();
+loadSmsDashboard();
+loadSmsContacts();
+loadSmsTemplates();

@@ -9,9 +9,12 @@ const { computeSendingHealth, findSpamWordsInText } = require('./lib/health');
 const { personalizeEmail } = require('./lib/personalize');
 const { testApiKey } = require('./lib/apiKeyCheck');
 const { addTrackingToLinks } = require('./lib/tracking');
+const { sendSms, testSmsProvider } = require('./lib/smsSender');
+const { extractPhones } = require('./lib/extractPhones');
 
 const app = express();
 app.use(express.json({ limit: '5mb' }));
+app.use(express.urlencoded({ extended: true }));
 app.use(express.static(path.join(__dirname, 'public')));
 
 const PORT = process.env.PORT || 4000;
@@ -55,6 +58,13 @@ app.post('/api/settings/test-api-key', async (req, res) => {
         .write();
     }
   }
+  res.json(result);
+});
+
+app.post('/api/settings/test-sms', async (req, res) => {
+  const provider = req.body.sms || db.get('settings').value().sms;
+  const result = await testSmsProvider(provider);
+  db.get('settings').set('smsStatus', { ...result, checkedAt: Date.now() }).write();
   res.json(result);
 });
 
@@ -113,7 +123,8 @@ app.get('/api/templates/:id/stats', (req, res) => {
   const clickRows = db.get('clicks').filter({ templateId }).value();
   const uniqueClickers = new Set(clickRows.map((c) => c.email)).size;
   const ctr = sent ? Math.round((uniqueClickers / sent) * 1000) / 10 : 0;
-  res.json({ sent, clicks: clickRows.length, uniqueClickers, ctr });
+  const leadsCount = db.get('leads').filter({ attributedTemplateId: templateId }).value().length;
+  res.json({ sent, clicks: clickRows.length, uniqueClickers, ctr, leadsCount });
 });
 
 // ---------- Link click tracking ----------
@@ -123,6 +134,37 @@ app.get('/api/track/click', (req, res) => {
   if (!/^https?:\/\//i.test(url)) return res.status(400).send('Invalid link');
   db.get('clicks').push({ id: uuid(), templateId: tid || null, email: e || null, url, clickedAt: Date.now() }).write();
   res.redirect(302, url);
+});
+
+// ---------- Lead-conversion webhook ----------
+// neercred.com's Apply form should POST here when someone actually submits, so we can
+// tell "clicked the email" apart from "actually became a lead" per template.
+app.post('/api/leads/webhook', (req, res) => {
+  const { secret, email, phone, name } = req.body;
+  const expected = db.get('settings.leadWebhookSecret').value();
+  if (!secret || secret !== expected) return res.status(401).json({ error: 'Invalid webhook secret' });
+  if (!email && !phone) return res.status(400).json({ error: 'email or phone is required' });
+
+  // Attribute this lead to whichever template's tracked link this email most recently clicked.
+  const clicksByEmail = email
+    ? db.get('clicks').filter((c) => c.email === email).value().sort((a, b) => b.clickedAt - a.clickedAt)
+    : [];
+  const attributedTemplateId = clicksByEmail[0]?.templateId || null;
+
+  const lead = {
+    id: uuid(),
+    email: email || null,
+    phone: phone || null,
+    name: name || '',
+    attributedTemplateId,
+    receivedAt: Date.now()
+  };
+  db.get('leads').push(lead).write();
+  res.json({ ok: true, attributedTemplateId });
+});
+
+app.get('/api/leads', (req, res) => {
+  res.json(db.get('leads').value().slice().reverse());
 });
 
 // ---------- Contacts ----------
@@ -146,7 +188,7 @@ app.post('/api/contacts/extract', async (req, res) => {
     if (suppression.has(email)) status = 'suppressed';
     else if (!isValidFormat(email)) status = 'invalid';
     else if (isDisposable(email)) status = 'invalid';
-    const contact = { id: uuid(), email, name: name || '', status, bounceCount: 0, lastBounceReason: null, addedAt: Date.now() };
+    const contact = { id: uuid(), email, name: name || '', tags: [], status, bounceCount: 0, lastBounceReason: null, addedAt: Date.now() };
     db.get('contacts').push(contact).write();
     existing.add(email);
     added.push(contact);
@@ -158,6 +200,41 @@ app.post('/api/contacts/extract', async (req, res) => {
 app.delete('/api/contacts/:id', (req, res) => {
   db.get('contacts').remove({ id: req.params.id }).write();
   res.json({ ok: true });
+});
+
+app.patch('/api/contacts/:id/tags', (req, res) => {
+  const tags = Array.isArray(req.body.tags) ? req.body.tags.map((t) => String(t).trim()).filter(Boolean) : [];
+  const contact = db.get('contacts').find({ id: req.params.id }).assign({ tags }).write();
+  res.json(contact);
+});
+
+app.get('/api/contacts/tags', (req, res) => {
+  const tagSet = new Set();
+  db.get('contacts').value().forEach((c) => (c.tags || []).forEach((t) => tagSet.add(t)));
+  res.json([...tagSet].sort());
+});
+
+function toCsv(rows, columns) {
+  const escape = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+  const header = columns.map(escape).join(',');
+  const body = rows.map((r) => columns.map((c) => escape(r[c])).join(',')).join('\n');
+  return `${header}\n${body}`;
+}
+
+app.get('/api/contacts/export.csv', (req, res) => {
+  const contacts = db.get('contacts').value().map((c) => ({ ...c, tags: (c.tags || []).join('|') }));
+  const csv = toCsv(contacts, ['email', 'name', 'status', 'tags', 'bounceCount', 'lastBounceReason', 'addedAt']);
+  res.set('Content-Type', 'text/csv');
+  res.set('Content-Disposition', 'attachment; filename="contacts.csv"');
+  res.send(csv);
+});
+
+app.get('/api/logs/export.csv', (req, res) => {
+  const logs = db.get('logs').value();
+  const csv = toCsv(logs, ['email', 'templateId', 'campaignId', 'status', 'error', 'aiPersonalized', 'sentAt']);
+  res.set('Content-Type', 'text/csv');
+  res.set('Content-Disposition', 'attachment; filename="send-logs.csv"');
+  res.send(csv);
 });
 
 // Re-validates every contact's email format/domain and flags dupes; does not touch
@@ -226,8 +303,86 @@ function randomDelayMs(minSec, maxSec) {
   return (min + Math.random() * (max - min)) * 1000;
 }
 
+async function runEmailCampaignLoop(campaign, contacts, template, baseUrl) {
+  const settings = db.get('settings').value();
+  const unsubscribeBaseUrl = `${baseUrl}/api/unsubscribe`;
+
+  for (const contact of contacts) {
+    const state = runningCampaigns.get(campaign.id);
+    if (!state || state.stop) {
+      db.get('campaigns').find({ id: campaign.id }).assign({ status: 'stopped' }).write();
+      return;
+    }
+    const currentSuppression = new Set(db.get('suppression').value());
+    if (currentSuppression.has(contact.email)) {
+      db.get('campaigns').find({ id: campaign.id }).update('skipped', (n) => n + 1).write();
+      continue;
+    }
+    let logEntry = { id: uuid(), campaignId: campaign.id, templateId: template.id, email: contact.email, status: 'sent', error: null, sentAt: Date.now(), aiPersonalized: false };
+    try {
+      let subject = fillPlaceholders(template.subject, contact);
+      let html = fillPlaceholders(template.html, contact);
+
+      if (settings.aiPersonalizeEmails && settings.anthropicApiKey) {
+        try {
+          const rewritten = await personalizeEmail({ apiKey: settings.anthropicApiKey, subject: template.subject, html: template.html, contact });
+          subject = rewritten.subject;
+          html = rewritten.html;
+          logEntry.aiPersonalized = true;
+        } catch (aiErr) {
+          console.error(`AI personalize failed for ${contact.email}, sending plain version:`, aiErr.message);
+        }
+      }
+
+      html = addTrackingToLinks(html, { baseUrl, templateId: template.id, email: contact.email });
+
+      await sendOne({
+        smtp: settings.smtp,
+        subject,
+        html,
+        contact,
+        fromName: settings.smtp.fromName,
+        fromEmail: settings.smtp.fromEmail,
+        unsubscribeBaseUrl
+      });
+      db.get('campaigns').find({ id: campaign.id }).update('sent', (n) => n + 1).write();
+    } catch (err) {
+      logEntry.status = 'failed';
+      logEntry.error = err.message;
+      db.get('campaigns').find({ id: campaign.id }).update('failed', (n) => n + 1).write();
+
+      const bounceCount = (contact.bounceCount || 0) + 1;
+      if (isHardBounce(err)) {
+        db.get('contacts').find({ id: contact.id }).assign({ status: 'bounced', bounceCount, lastBounceReason: err.message }).write();
+        if (!db.get('suppression').value().includes(contact.email)) {
+          db.get('suppression').push(contact.email).write();
+        }
+      } else {
+        db.get('contacts').find({ id: contact.id }).assign({ bounceCount, lastBounceReason: err.message }).write();
+      }
+    }
+    db.get('logs').push(logEntry).write();
+    await new Promise((r) => setTimeout(r, randomDelayMs(settings.delayMinSec, settings.delayMaxSec)));
+  }
+  db.get('campaigns').find({ id: campaign.id }).assign({ status: 'completed' }).write();
+  runningCampaigns.delete(campaign.id);
+}
+
+function resolveCampaignContacts({ contactIds, tag, dailyLimit }) {
+  const suppression = new Set(db.get('suppression').value());
+  let contacts = db.get('contacts').value();
+  if (Array.isArray(contactIds) && contactIds.length) {
+    const idSet = new Set(contactIds);
+    contacts = contacts.filter((c) => idSet.has(c.id));
+  } else if (tag) {
+    contacts = contacts.filter((c) => (c.tags || []).includes(tag));
+  }
+  contacts = contacts.filter((c) => c.status === 'active' && !suppression.has(c.email));
+  return contacts.slice(0, dailyLimit);
+}
+
 app.post('/api/campaign/start', (req, res) => {
-  const { templateId, contactIds } = req.body;
+  const { templateId, contactIds, tag, scheduledAt } = req.body;
   const settings = db.get('settings').value();
   const template = db.get('templates').find({ id: templateId }).value();
   if (!template) return res.status(400).json({ error: 'Template not found' });
@@ -235,21 +390,20 @@ app.post('/api/campaign/start', (req, res) => {
     return res.status(400).json({ error: 'SMTP settings are incomplete. Configure them first.' });
   }
 
-  const suppression = new Set(db.get('suppression').value());
-  let contacts = db.get('contacts').value();
-  if (Array.isArray(contactIds) && contactIds.length) {
-    const idSet = new Set(contactIds);
-    contacts = contacts.filter((c) => idSet.has(c.id));
-  }
-  contacts = contacts.filter((c) => c.status === 'active' && !suppression.has(c.email));
-
   const dailyLimit = Number(settings.dailyLimit) || 300;
-  contacts = contacts.slice(0, dailyLimit);
+  const contacts = resolveCampaignContacts({ contactIds, tag, dailyLimit });
+  const baseUrl = `${req.protocol}://${req.get('host')}`;
+  const scheduledTime = scheduledAt ? new Date(scheduledAt).getTime() : null;
+  const isFuture = scheduledTime && scheduledTime > Date.now();
 
   const campaign = {
     id: uuid(),
     templateId,
-    status: 'running',
+    contactIds: contacts.map((c) => c.id),
+    tag: tag || null,
+    baseUrl,
+    status: isFuture ? 'scheduled' : 'running',
+    scheduledAt: isFuture ? scheduledTime : null,
     total: contacts.length,
     sent: 0,
     failed: 0,
@@ -257,75 +411,32 @@ app.post('/api/campaign/start', (req, res) => {
     createdAt: Date.now()
   };
   db.get('campaigns').push(campaign).write();
-  runningCampaigns.set(campaign.id, { stop: false });
 
-  const baseUrl = `${req.protocol}://${req.get('host')}`;
-  const unsubscribeBaseUrl = `${baseUrl}/api/unsubscribe`;
-
-  (async () => {
-    for (const contact of contacts) {
-      const state = runningCampaigns.get(campaign.id);
-      if (!state || state.stop) {
-        db.get('campaigns').find({ id: campaign.id }).assign({ status: 'stopped' }).write();
-        return;
-      }
-      const currentSuppression = new Set(db.get('suppression').value());
-      if (currentSuppression.has(contact.email)) {
-        db.get('campaigns').find({ id: campaign.id }).update('skipped', (n) => n + 1).write();
-        continue;
-      }
-      let logEntry = { id: uuid(), campaignId: campaign.id, templateId, email: contact.email, status: 'sent', error: null, sentAt: Date.now(), aiPersonalized: false };
-      try {
-        let subject = fillPlaceholders(template.subject, contact);
-        let html = fillPlaceholders(template.html, contact);
-
-        if (settings.aiPersonalizeEmails && settings.anthropicApiKey) {
-          try {
-            const rewritten = await personalizeEmail({ apiKey: settings.anthropicApiKey, subject: template.subject, html: template.html, contact });
-            subject = rewritten.subject;
-            html = rewritten.html;
-            logEntry.aiPersonalized = true;
-          } catch (aiErr) {
-            console.error(`AI personalize failed for ${contact.email}, sending plain version:`, aiErr.message);
-          }
-        }
-
-        html = addTrackingToLinks(html, { baseUrl, templateId, email: contact.email });
-
-        await sendOne({
-          smtp: settings.smtp,
-          subject,
-          html,
-          contact,
-          fromName: settings.smtp.fromName,
-          fromEmail: settings.smtp.fromEmail,
-          unsubscribeBaseUrl
-        });
-        db.get('campaigns').find({ id: campaign.id }).update('sent', (n) => n + 1).write();
-      } catch (err) {
-        logEntry.status = 'failed';
-        logEntry.error = err.message;
-        db.get('campaigns').find({ id: campaign.id }).update('failed', (n) => n + 1).write();
-
-        const bounceCount = (contact.bounceCount || 0) + 1;
-        if (isHardBounce(err)) {
-          db.get('contacts').find({ id: contact.id }).assign({ status: 'bounced', bounceCount, lastBounceReason: err.message }).write();
-          if (!db.get('suppression').value().includes(contact.email)) {
-            db.get('suppression').push(contact.email).write();
-          }
-        } else {
-          db.get('contacts').find({ id: contact.id }).assign({ bounceCount, lastBounceReason: err.message }).write();
-        }
-      }
-      db.get('logs').push(logEntry).write();
-      await new Promise((r) => setTimeout(r, randomDelayMs(settings.delayMinSec, settings.delayMaxSec)));
-    }
-    db.get('campaigns').find({ id: campaign.id }).assign({ status: 'completed' }).write();
-    runningCampaigns.delete(campaign.id);
-  })();
+  if (!isFuture) {
+    runningCampaigns.set(campaign.id, { stop: false });
+    runEmailCampaignLoop(campaign, contacts, template, baseUrl);
+  }
 
   res.json(campaign);
 });
+
+// Checks every 30s for scheduled campaigns whose time has come and starts them.
+setInterval(() => {
+  const due = db.get('campaigns').filter((c) => c.status === 'scheduled' && c.scheduledAt <= Date.now()).value();
+  due.forEach((campaign) => {
+    const template = db.get('templates').find({ id: campaign.templateId }).value();
+    if (!template) {
+      db.get('campaigns').find({ id: campaign.id }).assign({ status: 'failed_no_template' }).write();
+      return;
+    }
+    const contacts = db.get('contacts').value().filter((c) => campaign.contactIds.includes(c.id));
+    const suppression = new Set(db.get('suppression').value());
+    const readyContacts = contacts.filter((c) => c.status === 'active' && !suppression.has(c.email));
+    db.get('campaigns').find({ id: campaign.id }).assign({ status: 'running', total: readyContacts.length }).write();
+    runningCampaigns.set(campaign.id, { stop: false });
+    runEmailCampaignLoop(campaign, readyContacts, template, campaign.baseUrl);
+  });
+}, 30000);
 
 app.post('/api/campaign/:id/stop', (req, res) => {
   const state = runningCampaigns.get(req.params.id);
@@ -342,6 +453,181 @@ app.get('/api/campaign/:id/status', (req, res) => {
 
 app.get('/api/campaigns', (req, res) => {
   res.json(db.get('campaigns').value().slice().reverse());
+});
+
+// ================= SMS MARKETING (separate channel, mirrors the email flow) =================
+// Honest limitation shown in the UI too: this cannot check India's DND/NDNC registry —
+// there's no free public API for that. Real Indian promotional SMS needs a DLT-registered
+// provider (the operator blocks DND numbers automatically at that layer). Twilio (the
+// provider wired up here) is not DLT-registered for India — fine for testing / non-Indian
+// numbers, but swap in a DLT-compliant provider's API in lib/smsSender.js for real
+// India-wide loan SMS marketing.
+
+app.get('/api/sms/contacts', (req, res) => {
+  res.json(db.get('smsContacts').value());
+});
+
+app.post('/api/sms/contacts/extract', (req, res) => {
+  const { rawText } = req.body;
+  if (!rawText) return res.status(400).json({ error: 'rawText is required' });
+
+  const extracted = extractPhones(rawText);
+  const suppression = new Set(db.get('smsSuppression').value());
+  const existing = new Set(db.get('smsContacts').value().map((c) => c.phone));
+
+  const added = [];
+  extracted.forEach(({ phone, name }) => {
+    if (existing.has(phone)) return;
+    const status = suppression.has(phone) ? 'suppressed' : 'active';
+    const contact = { id: uuid(), phone, name: name || '', tags: [], status, failCount: 0, lastError: null, addedAt: Date.now() };
+    db.get('smsContacts').push(contact).write();
+    existing.add(phone);
+    added.push(contact);
+  });
+
+  res.json({ addedCount: added.length, totalExtracted: extracted.length, added });
+});
+
+app.delete('/api/sms/contacts/:id', (req, res) => {
+  db.get('smsContacts').remove({ id: req.params.id }).write();
+  res.json({ ok: true });
+});
+
+app.get('/api/sms/templates', (req, res) => {
+  res.json(db.get('smsTemplates').value());
+});
+
+app.post('/api/sms/templates', (req, res) => {
+  const { name, body, ctaUrl } = req.body;
+  if (!name || !body) return res.status(400).json({ error: 'name and body are required' });
+  if (ctaUrl && !/^https?:\/\//i.test(ctaUrl)) {
+    return res.status(400).json({ error: 'Link http:// ya https:// se shuru honi chahiye.' });
+  }
+  const fullBody = ctaUrl ? `${body}\n${ctaUrl}` : body;
+  const template = { id: uuid(), name, body: fullBody, ctaUrl: ctaUrl || '', createdAt: Date.now() };
+  db.get('smsTemplates').push(template).write();
+  res.json(template);
+});
+
+app.delete('/api/sms/templates/:id', (req, res) => {
+  db.get('smsTemplates').remove({ id: req.params.id }).write();
+  res.json({ ok: true });
+});
+
+app.get('/api/sms/opt-out', (req, res) => {
+  const phone = (req.query.phone || '').replace(/[-.\s]/g, '');
+  if (phone) {
+    const suppression = db.get('smsSuppression');
+    if (!suppression.value().includes(phone)) suppression.push(phone).write();
+    db.get('smsContacts').find({ phone }).assign({ status: 'suppressed' }).write();
+  }
+  res.send('You have been unsubscribed from SMS updates.');
+});
+
+// Twilio (or any SMS provider) can point its inbound-message webhook here; a reply of
+// STOP/UNSUBSCRIBE opts that number out permanently, same as the email unsubscribe link.
+app.post('/api/sms/webhook/inbound', (req, res) => {
+  const from = (req.body.From || req.body.from || '').replace(/[-.\s]/g, '');
+  const text = (req.body.Body || req.body.body || '').trim().toLowerCase();
+  if (from && ['stop', 'unsubscribe', 'stop all'].includes(text)) {
+    const suppression = db.get('smsSuppression');
+    if (!suppression.value().includes(from)) suppression.push(from).write();
+    db.get('smsContacts').find({ phone: from }).assign({ status: 'suppressed' }).write();
+  }
+  res.set('Content-Type', 'text/xml').send('<Response></Response>');
+});
+
+function randomSmsDelayMs(minSec, maxSec) {
+  const min = Math.max(1, Number(minSec) || 5);
+  const max = Math.max(min, Number(maxSec) || 15);
+  return (min + Math.random() * (max - min)) * 1000;
+}
+
+async function runSmsCampaignLoop(campaign, contacts, template) {
+  const settings = db.get('settings').value();
+  for (const contact of contacts) {
+    const state = runningCampaigns.get(campaign.id);
+    if (!state || state.stop) {
+      db.get('smsCampaigns').find({ id: campaign.id }).assign({ status: 'stopped' }).write();
+      return;
+    }
+    const currentSuppression = new Set(db.get('smsSuppression').value());
+    if (currentSuppression.has(contact.phone)) {
+      db.get('smsCampaigns').find({ id: campaign.id }).update('skipped', (n) => n + 1).write();
+      continue;
+    }
+    const body = fillPlaceholders(template.body, { name: contact.name, email: contact.phone });
+    let logEntry = { id: uuid(), campaignId: campaign.id, templateId: template.id, phone: contact.phone, status: 'sent', error: null, sentAt: Date.now() };
+    try {
+      await sendSms({ provider: settings.sms, to: contact.phone, body });
+      db.get('smsCampaigns').find({ id: campaign.id }).update('sent', (n) => n + 1).write();
+    } catch (err) {
+      logEntry.status = 'failed';
+      logEntry.error = err.message;
+      db.get('smsCampaigns').find({ id: campaign.id }).update('failed', (n) => n + 1).write();
+      const failCount = (contact.failCount || 0) + 1;
+      db.get('smsContacts').find({ id: contact.id }).assign({ failCount, lastError: err.message, status: failCount >= 3 ? 'bounced' : contact.status }).write();
+    }
+    db.get('smsLogs').push(logEntry).write();
+    await new Promise((r) => setTimeout(r, randomSmsDelayMs(settings.sms.delayMinSec, settings.sms.delayMaxSec)));
+  }
+  db.get('smsCampaigns').find({ id: campaign.id }).assign({ status: 'completed' }).write();
+  runningCampaigns.delete(campaign.id);
+}
+
+app.post('/api/sms/campaign/start', (req, res) => {
+  const { templateId, contactIds, tag } = req.body;
+  const settings = db.get('settings').value();
+  const template = db.get('smsTemplates').find({ id: templateId }).value();
+  if (!template) return res.status(400).json({ error: 'Template not found' });
+  if (!settings.sms.accountSid || !settings.sms.authToken || !settings.sms.fromNumber) {
+    return res.status(400).json({ error: 'SMS provider settings are incomplete. Configure them first.' });
+  }
+
+  const suppression = new Set(db.get('smsSuppression').value());
+  let contacts = db.get('smsContacts').value();
+  if (Array.isArray(contactIds) && contactIds.length) {
+    const idSet = new Set(contactIds);
+    contacts = contacts.filter((c) => idSet.has(c.id));
+  } else if (tag) {
+    contacts = contacts.filter((c) => (c.tags || []).includes(tag));
+  }
+  contacts = contacts.filter((c) => c.status === 'active' && !suppression.has(c.phone));
+
+  const dailyLimit = Number(settings.sms.dailyLimit) || 200;
+  contacts = contacts.slice(0, dailyLimit);
+
+  const campaign = { id: uuid(), templateId, status: 'running', total: contacts.length, sent: 0, failed: 0, skipped: 0, createdAt: Date.now() };
+  db.get('smsCampaigns').push(campaign).write();
+  runningCampaigns.set(campaign.id, { stop: false });
+  runSmsCampaignLoop(campaign, contacts, template);
+
+  res.json(campaign);
+});
+
+app.post('/api/sms/campaign/:id/stop', (req, res) => {
+  const state = runningCampaigns.get(req.params.id);
+  if (state) state.stop = true;
+  res.json({ ok: true });
+});
+
+app.get('/api/sms/campaign/:id/status', (req, res) => {
+  const campaign = db.get('smsCampaigns').find({ id: req.params.id }).value();
+  if (!campaign) return res.status(404).json({ error: 'not found' });
+  const logs = db.get('smsLogs').filter({ campaignId: campaign.id }).value();
+  res.json({ campaign, logs });
+});
+
+app.get('/api/sms/dashboard', (req, res) => {
+  const contacts = db.get('smsContacts').value();
+  const logs = db.get('smsLogs').value();
+  const summary = { total: contacts.length, active: 0, bounced: 0, suppressed: 0 };
+  contacts.forEach((c) => {
+    if (summary[c.status] !== undefined) summary[c.status] += 1;
+  });
+  const sent = logs.filter((l) => l.status === 'sent').length;
+  const failed = logs.filter((l) => l.status === 'failed').length;
+  res.json({ ...summary, sent, failed });
 });
 
 // ---------- Dashboard ----------

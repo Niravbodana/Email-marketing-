@@ -45,6 +45,24 @@ This tool is built to follow legitimate email marketing practice, not to evade s
 - Gmail/Outlook accounts have low daily bulk-sending limits and will throttle or block you fast. For real bulk volume, use SMTP credentials from a transactional ESP (Amazon SES, SendGrid, Mailgun, Brevo) instead — set them in the Settings tab, same as any SMTP.
 - Keep the per-run limit and delay conservative, especially when warming up a new sending domain/IP.
 
+## Contact tags + CSV export
+
+Click a contact's 🏷️ tags area in the Contacts tab to set comma-separated tags (e.g. "personal-loan", "business-loan"). In Send Campaign, filter by tag to target just that group instead of everyone. "⬇️ Export CSV" links in Contacts and Send Campaign download your contacts and send logs as CSV for backup or analysis.
+
+## Campaign scheduling
+
+In Send Campaign, tick "⏰ Abhi nahi, baad me bhejo (schedule)" and pick a date/time — the campaign is saved as "scheduled" and a background check (every 30s) starts it automatically once that time arrives, re-checking suppression/active status at that moment so nothing stale gets sent.
+
+## Lead-conversion webhook
+
+Settings shows a Webhook URL + Secret. Give these to whoever maintains neercred.com's Apply form: have their backend POST `{ "secret": "...", "email": "...", "name": "..." }` to that URL whenever someone actually submits the form. This records a real lead (not just a click) and — if that email previously clicked a tracked link — attributes the lead back to the template that drove it, shown as "leadsCount" in that template's stats via `/api/templates/:id/stats`.
+
+## SMS marketing (separate channel)
+
+A parallel "📱 SMS Marketing" tab: paste raw text to extract phone numbers, create SMS templates (with an optional Apply link appended), and send one-by-one through Twilio (configure Account SID / Auth Token / From Number in Settings). Opt-outs are handled two ways: a manual `/api/sms/opt-out?phone=...` link, and an inbound-webhook endpoint (`/api/sms/webhook/inbound`) you can point a provider's inbound-SMS webhook at — a reply of STOP/UNSUBSCRIBE permanently suppresses that number.
+
+**Important honest limitation**: there is no free public API to check India's National DND (NDNC) registry, so this app cannot verify DND status itself. Real Indian promotional SMS requires a **DLT (Distributed Ledger Technology)-registered** provider and template (e.g. MSG91, Kaleyra, Gupshup) — DND-registered numbers are then blocked automatically at the telecom operator level. Twilio (wired up by default here) is not DLT-registered for India, so it's suitable for testing / non-Indian numbers only. For real India-wide loan SMS marketing, swap the provider call in `lib/smsSender.js` for a DLT-compliant provider's API.
+
 ## Data storage
 
 All settings, templates, contacts, and logs are stored locally in `data/db.json` (gitignored). Nothing is sent anywhere except: your configured SMTP server (to send mail) and, only if you set an Anthropic API key, the Anthropic API (to extract emails from text you paste).

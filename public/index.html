@@ -15,6 +15,7 @@
     <button data-tab="templates" class="tab">✉️ Templates</button>
     <button data-tab="contacts" class="tab">👥 Contacts</button>
     <button data-tab="campaign" class="tab">🚀 Send Campaign</button>
+    <button data-tab="sms" class="tab">📱 SMS Marketing</button>
   </nav>
 </header>
 
@@ -97,6 +98,26 @@
     </label>
     <p class="hint">Kaise kaam karta hai: har contact ke liye Claude (Anthropic API) template ka wording thoda alag rewrite karta hai — offer, image, link, unsubscribe sab same rehta hai, sirf tone/sentence structure har mail me thoda unique ho jaata hai. Anthropic API key upar zaroori hai.</p>
 
+    <h3 style="margin-top:28px">📱 SMS Provider (Twilio) <span id="smsStatusDot" class="status-dot neutral"></span> <span id="smsStatusText" class="status-text">Not tested yet</span></h3>
+    <p class="hint">⚠️ Honest note: India ke DND (National Do Not Disturb) registry ko koi free public API check nahi karta. Real Indian promotional SMS ke liye DLT-registered provider (jaise MSG91, Kaleyra, Gupshup) chahiye — wahi operator-level pe DND numbers automatically block karta hai. Twilio DLT-registered nahi hai India ke liye, isliye testing/non-Indian numbers ke liye theek hai.</p>
+    <div class="grid">
+      <label>Twilio Account SID <input id="smsSid" placeholder="ACxxxxxxxx..." /></label>
+      <label>Twilio Auth Token <input id="smsToken" type="password" /></label>
+      <label>Twilio From Number <input id="smsFrom" placeholder="+1415XXXXXXX" /></label>
+      <label>Delay between SMS: min sec <input id="smsDelayMin" placeholder="5" /></label>
+      <label>Delay between SMS: max sec <input id="smsDelayMax" placeholder="15" /></label>
+      <label>Max SMS per campaign run <input id="smsDailyLimit" placeholder="200" /></label>
+    </div>
+    <button id="testSmsBtn">🔌 Test SMS Connection</button>
+    <p id="smsTestMsg" class="msg"></p>
+
+    <h3 style="margin-top:28px">🔗 Lead Webhook</h3>
+    <p class="hint">Yeh URL + secret apne website developer ko do — jab bhi koi neercred.com/apply pe form submit kare, unka server yahan POST kare taaki hume asli lead pata chale (na ki sirf click). Body: <code>{ "secret": "...", "email": "...", "name": "..." }</code></p>
+    <div class="grid">
+      <label>Webhook URL <input id="webhookUrl" readonly /></label>
+      <label>Secret <input id="webhookSecret" readonly /></label>
+    </div>
+
     <button id="saveSettings">💾 Save Settings</button>
     <p class="hint">Tip: Gmail/Outlook block bulk sending fast. For real bulk marketing, use a transactional ESP (SendGrid / Amazon SES / Mailgun / Brevo) SMTP credentials here for far better deliverability, and always set up SPF, DKIM and DMARC on your sending domain.</p>
     <p id="settingsMsg" class="msg"></p>
@@ -144,18 +165,66 @@
     <p id="healthMsg" class="msg"></p>
     <p class="hint">Invalid (bad format / disposable / duplicate) and bounced contacts are automatically excluded from sends. Bounced = a real send attempt failed permanently (e.g. "no such user") and that address is now suppressed for good.</p>
 
-    <h3>Contact List (<span id="contactCount">0</span>)</h3>
+    <h3>Contact List (<span id="contactCount">0</span>) <a href="/api/contacts/export.csv" class="export-link">⬇️ Export CSV</a></h3>
+    <p class="hint">Tags se contacts ko group karo (jaise "personal-loan", "business-loan") — click on a contact's tag area to edit them, then use tags in Send Campaign to target just that group.</p>
     <div id="contactList" class="list"></div>
   </section>
 
   <section id="tab-campaign" class="panel">
-    <h2>Send Campaign</h2>
+    <h2>🚀 Send Campaign</h2>
     <label>Template <select id="campaignTemplate"></select></label>
-    <p class="hint">All active (non-suppressed) contacts will be used, one email at a time, with the delay configured in Settings.</p>
+    <label>Filter by tag (optional — leave blank for everyone) <select id="campaignTag"><option value="">All contacts</option></select></label>
+    <p class="hint">All active (non-suppressed) contacts matching the filter will be used, one email at a time, with the delay configured in Settings.</p>
+
+    <label class="checkbox-row">
+      <input type="checkbox" id="scheduleToggle" />
+      <span>⏰ Abhi nahi, baad me bhejo (schedule)</span>
+    </label>
+    <label id="scheduleTimeRow" hidden>Send at <input id="scheduleTime" type="datetime-local" /></label>
+
     <button id="startCampaign">Start Sending</button>
     <button id="stopCampaign" disabled>Stop</button>
     <div id="campaignStatus" class="msg"></div>
+    <h3>Scheduled / Past Campaigns <a href="/api/logs/export.csv" class="export-link">⬇️ Export Send Logs CSV</a></h3>
+    <div id="campaignList" class="list"></div>
     <div id="campaignLogs" class="list"></div>
+  </section>
+
+  <section id="tab-sms" class="panel">
+    <h2>📱 SMS Marketing</h2>
+    <div class="big-cards">
+      <div class="big-card neutral"><span class="big-num" id="smsCardTotal">0</span><span class="big-label">Total Contacts</span></div>
+      <div class="big-card good"><span class="big-num" id="smsCardSent">0</span><span class="big-label">✅ Sent</span></div>
+      <div class="big-card bad"><span class="big-num" id="smsCardFailed">0</span><span class="big-label">❌ Failed</span></div>
+      <div class="big-card neutral"><span class="big-num" id="smsCardSuppressed">0</span><span class="big-label">🚫 Opted-out</span></div>
+    </div>
+
+    <h3>👥 SMS Contacts</h3>
+    <label>Paste raw bulk data with phone numbers
+      <textarea id="smsRawData" rows="5" placeholder="9876543210, +919876543211, ..."></textarea>
+    </label>
+    <button id="smsExtractBtn">Extract Phone Numbers</button>
+    <p id="smsExtractMsg" class="msg"></p>
+    <div id="smsContactList" class="list"></div>
+
+    <h3>✉️ SMS Templates</h3>
+    <div class="grid">
+      <label>Template Name <input id="smsTplName" placeholder="Loan Promo SMS" /></label>
+      <label>Apply Link <input id="smsTplCtaUrl" value="https://neercred.com/apply" placeholder="https://neercred.com/apply" /></label>
+    </div>
+    <label>Message (use {{name}} as placeholder, 160 chars ≈ 1 SMS segment)
+      <textarea id="smsTplBody" rows="4" placeholder="Hi {{name}}, check your loan eligibility with Neercred."></textarea>
+    </label>
+    <button id="smsSaveTemplate">+ Save SMS Template</button>
+    <p id="smsTemplateMsg" class="msg"></p>
+    <div id="smsTemplateList" class="list"></div>
+
+    <h3>🚀 Send SMS Campaign</h3>
+    <label>Template <select id="smsCampaignTemplate"></select></label>
+    <button id="smsStartCampaign">Start Sending</button>
+    <button id="smsStopCampaign" disabled>Stop</button>
+    <div id="smsCampaignStatus" class="msg"></div>
+    <div id="smsCampaignLogs" class="list"></div>
   </section>
 </main>
 

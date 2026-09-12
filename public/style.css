@@ -97,3 +97,8 @@ button:disabled { background: #9ca3af; cursor: not-allowed; }
 .template-card:last-child { border-bottom: none; }
 .template-card .row1 { display: flex; justify-content: space-between; align-items: center; }
 .template-card .stats { font-size: 12px; color: #6b7280; margin-top: 4px; }
+
+.export-link { font-size: 12px; font-weight: 400; color: #2563eb; text-decoration: none; margin-left: 8px; }
+.export-link:hover { text-decoration: underline; }
+.tag-editor { display: inline-block; margin-left: 8px; font-size: 12px; color: #6b7280; background: #f3f4f6; padding: 1px 8px; border-radius: 10px; cursor: pointer; }
+.tag-editor:hover { background: #e5e7eb; }
