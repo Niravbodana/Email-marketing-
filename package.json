@@ -1,0 +1,17 @@
+{
+  "name": "neercred-email-marketing",
+  "version": "1.0.0",
+  "description": "Self-hosted email marketing sender for neercred.com — SMTP sending, templates, extraction, suppression list.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "lowdb": "^1.0.0",
+    "node-fetch": "^2.7.0",
+    "nodemailer": "^6.9.14",
+    "uuid": "^9.0.1",
+    "xlsx": "^0.18.5"
+  }
+}
