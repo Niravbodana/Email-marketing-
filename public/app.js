@@ -1,16 +1,97 @@
 const $ = (id) => document.getElementById(id);
 
-document.querySelectorAll('.tab').forEach((btn) => {
-  btn.addEventListener('click', () => {
-    document.querySelectorAll('.tab').forEach((b) => b.classList.remove('active'));
-    document.querySelectorAll('.panel').forEach((p) => p.classList.remove('active'));
-    btn.classList.add('active');
-    $(`tab-${btn.dataset.tab}`).classList.add('active');
-    if (btn.dataset.tab === 'dashboard' && typeof loadDashboard === 'function') loadDashboard();
-    if (btn.dataset.tab === 'campaign' && typeof loadCampaignList === 'function') { loadCampaignList(); loadCampaignTags(); }
-    if (btn.dataset.tab === 'sms' && typeof loadSmsDashboard === 'function') { loadSmsDashboard(); loadSmsContacts(); loadSmsTemplates(); }
-    if (btn.dataset.tab === 'contacts' && typeof loadContacts === 'function') { loadContacts(); loadHealth(); }
+function esc(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function toast(message, type = 'ok') {
+  const stack = $('toastStack');
+  if (!stack) return;
+  const el = document.createElement('div');
+  el.className = `toast ${type}`;
+  el.textContent = message;
+  stack.appendChild(el);
+  setTimeout(() => el.remove(), 4200);
+}
+
+function setLive(text, mode) {
+  const pill = $('livePill');
+  const label = $('livePillText');
+  if (label) label.textContent = text;
+  if (pill) pill.className = `live-pill ${mode || ''}`;
+}
+
+function showOverlay(title, detail, steps) {
+  $('processTitle').textContent = title;
+  $('processDetail').textContent = detail;
+  $('processSteps').innerHTML = (steps || []).map((s, i) => `<li data-i="${i}">${esc(s)}</li>`).join('');
+  $('processOverlay').hidden = false;
+}
+
+function overlayStep(index) {
+  $('processSteps').querySelectorAll('li').forEach((li, i) => {
+    li.className = i < index ? 'done' : i === index ? 'on' : '';
   });
+}
+
+function hideOverlay() {
+  $('processOverlay').hidden = true;
+}
+
+function animateNumber(el, next) {
+  if (!el) return;
+  const target = Number(next) || 0;
+  const current = Number(el.dataset.value || el.textContent) || 0;
+  if (current === target) {
+    el.textContent = String(target);
+    el.dataset.value = String(target);
+    return;
+  }
+  const start = performance.now();
+  const duration = 500;
+  const from = current;
+  const tick = (now) => {
+    const p = Math.min(1, (now - start) / duration);
+    const eased = 1 - Math.pow(1 - p, 3);
+    el.textContent = String(Math.round(from + (target - from) * eased));
+    if (p < 1) requestAnimationFrame(tick);
+    else {
+      el.textContent = String(target);
+      el.dataset.value = String(target);
+    }
+  };
+  requestAnimationFrame(tick);
+}
+
+function setMsg(id, text, isError) {
+  const el = $(id);
+  if (!el) return;
+  el.textContent = text;
+  el.className = isError ? 'msg error' : 'msg';
+}
+
+function openTab(name) {
+  document.querySelectorAll('.tab').forEach((b) => b.classList.toggle('active', b.dataset.tab === name));
+  document.querySelectorAll('.panel').forEach((p) => p.classList.toggle('active', p.id === `tab-${name}`));
+  document.querySelectorAll('.journey-step').forEach((s) => s.classList.toggle('active', s.dataset.goto === name));
+  if (name === 'dashboard') loadDashboard();
+  if (name === 'campaign') { loadCampaignList(); loadCampaignTags(); }
+  if (name === 'sms') { loadSmsDashboard(); loadSmsContacts(); loadSmsTemplates(); }
+  if (name === 'contacts') { loadContacts(); loadHealth(); }
+  if (name === 'templates') { loadTemplates(); refreshPreview(); }
+}
+
+document.querySelectorAll('.tab').forEach((btn) => {
+  btn.addEventListener('click', () => openTab(btn.dataset.tab));
+});
+
+document.querySelectorAll('.journey-step').forEach((btn) => {
+  btn.addEventListener('click', () => openTab(btn.dataset.goto));
 });
 
 async function api(path, opts) {
@@ -18,12 +99,27 @@ async function api(path, opts) {
     headers: { 'content-type': 'application/json' },
     ...opts
   });
-  const data = await res.json();
+  const raw = await res.text();
+  let data = {};
+  if (raw) {
+    try {
+      data = JSON.parse(raw);
+    } catch {
+      throw new Error(res.ok ? 'Unexpected server response' : `Request failed (${res.status})`);
+    }
+  }
   if (!res.ok) throw new Error(data.error || 'Request failed');
   return data;
 }
 
-// ---------- Settings ----------
+function updateJourneyDone({ hasSmtp, hasTemplate, hasContacts }) {
+  document.querySelectorAll('.journey-step').forEach((step) => {
+    const n = step.dataset.step;
+    const done = (n === '1' && hasSmtp) || (n === '2' && hasTemplate) || (n === '3' && hasContacts) || (n === '4' && hasTemplate && hasContacts && hasSmtp);
+    step.classList.toggle('done', !!done);
+  });
+}
+
 let apiKeys = [];
 
 function setStatusDot(dotEl, textEl, status) {
@@ -35,11 +131,11 @@ function setStatusDot(dotEl, textEl, status) {
 function renderApiKeyList() {
   $('apiKeyList').innerHTML = apiKeys.map((k, i) => `
     <div class="api-key-row" data-index="${i}">
-      <input class="key-name" placeholder="Key name (e.g. Anthropic)" value="${k.name || ''}" />
-      <input class="key-value" type="password" placeholder="key..." value="${k.key || ''}" />
-      <span class="status-dot ${k.status?.ok === true ? 'good' : k.status?.ok === false ? 'bad' : 'neutral'}" title="${k.status?.message || 'Not tested yet'}"></span>
-      <button class="test-key" type="button">Test</button>
-      <button class="remove-key" type="button">✕</button>
+      <input class="key-name" placeholder="Key name (e.g. Anthropic)" value="${esc(k.name || '')}" />
+      <input class="key-value" type="password" placeholder="key..." value="${esc(k.key || '')}" />
+      <span class="status-dot ${k.status?.ok === true ? 'good' : k.status?.ok === false ? 'bad' : 'neutral'}" title="${esc(k.status?.message || 'Not tested yet')}"></span>
+      <button class="test-key btn-ghost" type="button">Test</button>
+      <button class="remove-key" type="button">Remove</button>
     </div>
   `).join('');
 
@@ -62,9 +158,11 @@ function renderApiKeyList() {
         apiKeys[idx].status = result;
         dot.className = `status-dot ${result.ok === true ? 'good' : result.ok === false ? 'bad' : 'neutral'}`;
         dot.title = result.message;
+        toast(result.message, result.ok ? 'ok' : 'error');
       } catch (e) {
         dot.className = 'status-dot bad';
         dot.title = e.message;
+        toast(e.message, 'error');
       }
     });
   });
@@ -107,20 +205,21 @@ async function loadSettings() {
   $('apiMaxBudget').value = s.apiBudget?.maxUsd ?? 10;
   $('apiAlertThreshold').value = s.apiBudget?.alertThresholdPct ?? 80;
   loadBudgetSpentInfo();
+  return s;
 }
 
 async function loadBudgetSpentInfo() {
   try {
     const u = await api('/api/usage/summary');
-    $('budgetSpentInfo').textContent = `Ab tak spend: $${u.spentUsd} of $${u.maxUsd} (${u.percentUsed}%) — ${u.callCount} API call(s).`;
+    $('budgetSpentInfo').textContent = `Spent so far: $${u.spentUsd} of $${u.maxUsd} (${u.percentUsed}%) — ${u.callCount} API call(s).`;
   } catch {
     // ignore
   }
 }
 
 $('testSmtpBtn').addEventListener('click', async () => {
-  $('smtpTestMsg').textContent = 'Testing...';
-  $('smtpTestMsg').className = 'msg';
+  setMsg('smtpTestMsg', 'Testing connection…');
+  setLive('Testing mail…', 'busy');
   try {
     const smtp = {
       host: $('smtpHost').value,
@@ -133,26 +232,30 @@ $('testSmtpBtn').addEventListener('click', async () => {
     };
     const result = await api('/api/settings/test-smtp', { method: 'POST', body: JSON.stringify({ smtp }) });
     setStatusDot($('smtpStatusDot'), $('smtpStatusText'), result);
-    $('smtpTestMsg').textContent = result.ok ? '✅ Connection successful!' : `❌ ${result.message}`;
-    $('smtpTestMsg').className = result.ok ? 'msg' : 'msg error';
+    setMsg('smtpTestMsg', result.ok ? 'Connection successful.' : result.message, !result.ok);
+    toast(result.ok ? 'Mail connection works' : result.message, result.ok ? 'ok' : 'error');
+    setLive(result.ok ? 'Mail connected' : 'Mail failed', result.ok ? 'good' : '');
   } catch (e) {
-    $('smtpTestMsg').textContent = e.message;
-    $('smtpTestMsg').className = 'msg error';
+    setMsg('smtpTestMsg', e.message, true);
+    toast(e.message, 'error');
+    setLive('Ready');
   }
 });
 
 $('testSmsBtn').addEventListener('click', async () => {
-  $('smsTestMsg').textContent = 'Testing...';
-  $('smsTestMsg').className = 'msg';
+  setMsg('smsTestMsg', 'Testing SMS…');
+  setLive('Testing SMS…', 'busy');
   try {
     const sms = { accountSid: $('smsSid').value, authToken: $('smsToken').value, fromNumber: $('smsFrom').value };
     const result = await api('/api/settings/test-sms', { method: 'POST', body: JSON.stringify({ sms }) });
     setStatusDot($('smsStatusDot'), $('smsStatusText'), result);
-    $('smsTestMsg').textContent = result.ok ? '✅ Connection successful!' : `❌ ${result.message}`;
-    $('smsTestMsg').className = result.ok ? 'msg' : 'msg error';
+    setMsg('smsTestMsg', result.ok ? 'SMS connection successful.' : result.message, !result.ok);
+    toast(result.ok ? 'SMS connection works' : result.message, result.ok ? 'ok' : 'error');
+    setLive(result.ok ? 'SMS connected' : 'SMS failed', result.ok ? 'good' : '');
   } catch (e) {
-    $('smsTestMsg').textContent = e.message;
-    $('smsTestMsg').className = 'msg error';
+    setMsg('smsTestMsg', e.message, true);
+    toast(e.message, 'error');
+    setLive('Ready');
   }
 });
 
@@ -190,33 +293,62 @@ $('saveSettings').addEventListener('click', async () => {
         }
       })
     });
-    $('settingsMsg').textContent = 'Settings saved.';
-    $('settingsMsg').className = 'msg';
+    setMsg('settingsMsg', 'Settings saved.');
+    toast('Settings saved');
     loadBudgetSpentInfo();
+    refreshJourney();
   } catch (e) {
-    $('settingsMsg').textContent = e.message;
-    $('settingsMsg').className = 'msg error';
+    setMsg('settingsMsg', e.message, true);
+    toast(e.message, 'error');
   }
 });
 
-// ---------- Templates ----------
+function refreshPreview() {
+  const frame = $('tplPreview');
+  if (!frame) return;
+  const name = 'Amit';
+  const email = 'amit@example.com';
+  const subject = ($('tplSubject').value || 'Subject').replace(/\{\{\s*name\s*\}\}/gi, name).replace(/\{\{\s*email\s*\}\}/gi, email);
+  let html = ($('tplHtml').value || '<p style="color:#8a7763">Start typing the email on the left…</p>')
+    .replace(/\{\{\s*name\s*\}\}/gi, name)
+    .replace(/\{\{\s*email\s*\}\}/gi, email);
+  const ctaText = $('tplCtaText').value;
+  const ctaUrl = $('tplCtaUrl').value;
+  if (ctaText && ctaUrl) {
+    html += `<div style="text-align:center;margin:28px 0"><a href="${esc(ctaUrl)}" style="background:#c45c26;color:#fff8ee;text-decoration:none;padding:14px 32px;border-radius:8px;font-weight:600;display:inline-block">${esc(ctaText)}</a></div>`;
+  }
+  const image = $('tplImage').value.trim();
+  const imgBlock = image ? `<img src="${esc(image)}" alt="" style="max-width:100%;border-radius:8px;margin:12px 0" />` : '';
+  frame.srcdoc = `<!doctype html><html><body style="font-family:Georgia,serif;padding:18px;color:#2b2118;background:#fffaf2">
+    <p style="font-size:12px;color:#8a7763;margin-top:0">Subject: ${esc(subject)}</p>
+    ${imgBlock}${html}
+  </body></html>`;
+}
+
+['tplName', 'tplSubject', 'tplHtml', 'tplImage', 'tplCtaText', 'tplCtaUrl'].forEach((id) => {
+  const el = $(id);
+  if (el) el.addEventListener('input', refreshPreview);
+});
+
 async function loadTemplates() {
   const templates = await api('/api/templates');
   $('templateList').innerHTML = templates.map((t) => `
-    <div class="template-card" data-id="${t.id}">
+    <div class="template-card" data-id="${esc(t.id)}">
       <div class="row1">
-        <span>${t.name} &mdash; <em>${t.subject}</em></span>
-        <button data-id="${t.id}" class="deleteTemplate">Delete</button>
+        <span><strong>${esc(t.name)}</strong> — <em>${esc(t.subject)}</em></span>
+        <button data-id="${esc(t.id)}" class="deleteTemplate btn-ghost" type="button">Delete</button>
       </div>
-      <div class="stats" id="stats-${t.id}">Loading stats...</div>
-    </div>`).join('') || '<div class="list-row">No templates yet.</div>';
+      <div class="stats" id="stats-${esc(t.id)}">Loading stats…</div>
+    </div>`).join('') || '<div class="list-row">No templates yet. Write one above and save it.</div>';
 
-  $('campaignTemplate').innerHTML = templates.map((t) => `<option value="${t.id}">${t.name}</option>`).join('');
+  $('campaignTemplate').innerHTML = templates.map((t) => `<option value="${esc(t.id)}">${esc(t.name)}</option>`).join('');
 
   document.querySelectorAll('.deleteTemplate').forEach((btn) => {
     btn.addEventListener('click', async () => {
       await api(`/api/templates/${btn.dataset.id}`, { method: 'DELETE' });
+      toast('Template deleted');
       loadTemplates();
+      refreshJourney();
     });
   });
 
@@ -224,35 +356,43 @@ async function loadTemplates() {
     try {
       const stats = await api(`/api/templates/${t.id}/stats`);
       const el = document.getElementById(`stats-${t.id}`);
-      if (el) el.textContent = `📧 Sent: ${stats.sent} · 🖱️ Clicked by: ${stats.uniqueClickers} (${stats.ctr}% CTR)`;
+      if (el) el.textContent = `Sent ${stats.sent} · Clicked by ${stats.uniqueClickers} (${stats.ctr}% CTR) · Leads ${stats.leadsCount || 0}`;
     } catch {
       // ignore stat load failure for one template
     }
   });
+  return templates;
 }
 
 $('checkWordsBtn').addEventListener('click', async () => {
   try {
+    showOverlay('Checking wording', 'Scanning subject, body and button text', ['Read the email', 'Find risky phrases', 'Suggest safer wording']);
+    overlayStep(0);
     const result = await api('/api/templates/check-words', {
       method: 'POST',
       body: JSON.stringify({ subject: $('tplSubject').value, html: `${$('tplHtml').value} ${$('tplCtaText').value}` })
     });
+    overlayStep(2);
+    hideOverlay();
     if (!result.matches.length) {
-      $('spamWordsResult').innerHTML = '<p class="msg">✅ Koi risky/spammy word nahi mila.</p>';
+      $('spamWordsResult').innerHTML = '<p class="msg">No risky spam words found.</p>';
+      toast('Wording looks clean');
       return;
     }
     $('spamWordsResult').innerHTML = `
       <div class="word-suggestions">
         ${result.matches.map((m) => `
           <div class="word-row">
-            <span class="word-bad">"${m.phrase}"</span>
+            <span class="word-bad">"${esc(m.phrase)}"</span>
             <span class="word-arrow">→</span>
-            <span class="word-good">${m.alternatives.map((a) => `"${a}"`).join(' or ')}</span>
+            <span class="word-good">${m.alternatives.map((a) => `"${esc(a)}"`).join(' or ')}</span>
           </div>
         `).join('')}
       </div>`;
+    toast(`${result.matches.length} phrase(s) to soften`, 'error');
   } catch (e) {
-    $('spamWordsResult').innerHTML = `<p class="msg error">${e.message}</p>`;
+    hideOverlay();
+    $('spamWordsResult').innerHTML = `<p class="msg error">${esc(e.message)}</p>`;
   }
 });
 
@@ -269,8 +409,8 @@ $('saveTemplate').addEventListener('click', async () => {
         ctaUrl: $('tplCtaUrl').value
       })
     });
-    $('templateMsg').textContent = 'Template saved.';
-    $('templateMsg').className = 'msg';
+    setMsg('templateMsg', 'Template saved.');
+    toast('Template saved');
     $('tplName').value = '';
     $('tplSubject').value = '';
     $('tplHtml').value = '';
@@ -278,29 +418,31 @@ $('saveTemplate').addEventListener('click', async () => {
     $('tplCtaText').value = 'Check Your Eligibility';
     $('tplCtaUrl').value = 'https://neercred.com/apply';
     $('spamWordsResult').innerHTML = '';
+    refreshPreview();
     loadTemplates();
+    refreshJourney();
   } catch (e) {
-    $('templateMsg').textContent = e.message;
-    $('templateMsg').className = 'msg error';
+    setMsg('templateMsg', e.message, true);
+    toast(e.message, 'error');
   }
 });
 
-// ---------- Contacts ----------
 async function loadContacts() {
   const contacts = await api('/api/contacts');
   $('contactCount').textContent = contacts.length;
   $('contactList').innerHTML = contacts.map((c) => `
     <div class="list-row">
-      <span>${c.email} ${c.name ? `(${c.name})` : ''} &mdash; <span class="status-${c.status}">${c.status}</span>
-        <span class="tag-editor" data-id="${c.id}" title="Click to edit tags">🏷️ ${(c.tags || []).join(', ') || 'add tags'}</span>
+      <span>${esc(c.email)} ${c.name ? `(${esc(c.name)})` : ''} — <span class="status-${esc(c.status)}">${esc(c.status)}</span>
+        <span class="tag-editor" data-id="${esc(c.id)}" title="Click to edit tags">${(c.tags || []).length ? esc((c.tags || []).join(', ')) : 'add tags'}</span>
       </span>
-      <button data-id="${c.id}" class="deleteContact">Remove</button>
+      <button data-id="${esc(c.id)}" class="deleteContact btn-ghost" type="button">Remove</button>
     </div>`).join('') || '<div class="list-row">No contacts yet. Paste bulk data above and extract.</div>';
 
   document.querySelectorAll('.deleteContact').forEach((btn) => {
     btn.addEventListener('click', async () => {
       await api(`/api/contacts/${btn.dataset.id}`, { method: 'DELETE' });
       loadContacts();
+      refreshJourney();
     });
   });
 
@@ -315,34 +457,51 @@ async function loadContacts() {
       loadCampaignTags();
     });
   });
+  return contacts;
 }
 
 async function loadCampaignTags() {
   const tags = await api('/api/contacts/tags');
   const select = $('campaignTag');
   const current = select.value;
-  select.innerHTML = '<option value="">All contacts</option>' + tags.map((t) => `<option value="${t}">${t}</option>`).join('');
+  select.innerHTML = '<option value="">All contacts</option>' + tags.map((t) => `<option value="${esc(t)}">${esc(t)}</option>`).join('');
   if (tags.includes(current)) select.value = current;
 }
 
 $('extractBtn').addEventListener('click', async () => {
   const rawText = $('rawData').value.trim();
-  if (!rawText) return;
-  $('extractMsg').textContent = 'Extracting...';
-  $('extractMsg').className = 'msg';
+  if (!rawText) {
+    toast('Paste some text first', 'error');
+    return;
+  }
+  setMsg('extractMsg', 'Extracting emails…');
+  setLive('Extracting…', 'busy');
+  const mini = $('extractProcess');
+  mini.hidden = false;
+  mini.innerHTML = '<span>Reading text</span><span>Finding emails</span><span>Saving new people</span>';
+  showOverlay('Extracting emails', 'Reading the pasted text and adding new contacts', ['Read pasted text', 'Find email addresses', 'Skip duplicates & unsubscribes']);
+  overlayStep(1);
   try {
     const result = await api('/api/contacts/extract', { method: 'POST', body: JSON.stringify({ rawText }) });
-    $('extractMsg').textContent = `Found ${result.totalExtracted} email(s), added ${result.addedCount} new contact(s).`;
+    overlayStep(2);
+    hideOverlay();
+    setMsg('extractMsg', `Found ${result.totalExtracted} email(s), added ${result.addedCount} new contact(s).`);
+    toast(`Added ${result.addedCount} contact(s)`);
     $('rawData').value = '';
+    mini.hidden = true;
     loadContacts();
     loadHealth();
+    refreshJourney();
+    setLive('Contacts updated', 'good');
   } catch (e) {
-    $('extractMsg').textContent = e.message;
-    $('extractMsg').className = 'msg error';
+    hideOverlay();
+    mini.hidden = true;
+    setMsg('extractMsg', e.message, true);
+    toast(e.message, 'error');
+    setLive('Ready');
   }
 });
 
-// ---------- List Health ----------
 async function loadHealth() {
   const h = await api('/api/contacts/health');
   const cards = [
@@ -352,27 +511,57 @@ async function loadHealth() {
     ['suppressed', 'Suppressed']
   ];
   $('healthSummary').innerHTML = cards.map(([key, label]) => `
-    <div class="health-card"><span class="num">${h[key]}</span><span class="label">${label}</span></div>
+    <div class="health-card"><span class="num">${h[key]}</span><span class="label">${esc(label)}</span></div>
   `).join('');
 }
 
 $('healthCheckBtn').addEventListener('click', async () => {
-  $('healthMsg').textContent = 'Checking...';
-  $('healthMsg').className = 'msg';
+  setMsg('healthMsg', 'Checking the list…');
+  setLive('Health check…', 'busy');
+  showOverlay('List health check', 'Validating format, disposable domains and duplicates', ['Scan addresses', 'Flag invalid / disposable', 'Update statuses']);
+  overlayStep(0);
   try {
     const result = await api('/api/contacts/health-check', { method: 'POST' });
-    $('healthMsg').textContent = `Checked ${result.checked} contact(s): ${result.invalidCount} invalid, ${result.duplicateCount} duplicate(s) flagged.`;
+    overlayStep(2);
+    hideOverlay();
+    setMsg('healthMsg', `Checked ${result.checked} contact(s): ${result.invalidCount} invalid, ${result.duplicateCount} duplicate(s) flagged.`);
+    toast('Health check finished');
     loadContacts();
     loadHealth();
+    setLive('List checked', 'good');
   } catch (e) {
-    $('healthMsg').textContent = e.message;
-    $('healthMsg').className = 'msg error';
+    hideOverlay();
+    setMsg('healthMsg', e.message, true);
+    toast(e.message, 'error');
+    setLive('Ready');
   }
 });
 
-// ---------- Campaign ----------
 let currentCampaignId = null;
 let pollTimer = null;
+
+function setVisualizer(state, title, kicker) {
+  const box = $('campaignVisualizer');
+  box.className = `visualizer ${state}`;
+  $('vizTitle').textContent = title;
+  $('vizKicker').textContent = kicker;
+}
+
+function renderViz(campaign, logs) {
+  const done = (campaign.sent || 0) + (campaign.failed || 0) + (campaign.skipped || 0);
+  const pct = campaign.total ? Math.round((done / campaign.total) * 100) : 0;
+  $('vizBarFill').style.width = `${pct}%`;
+  $('vizCounts').innerHTML = `
+    <span>Sent <b>${campaign.sent}</b></span>
+    <span>Failed <b>${campaign.failed}</b></span>
+    <span>Skipped <b>${campaign.skipped}</b></span>
+    <span>Total <b>${campaign.total}</b></span>
+  `;
+  const recent = logs.slice(-6).reverse();
+  $('vizLane').innerHTML = recent.map((l) => (
+    `<span class="chip ${esc(l.status)}">${esc(l.email)} · ${esc(l.status)}</span>`
+  )).join('');
+}
 
 $('scheduleToggle').addEventListener('change', (e) => {
   $('scheduleTimeRow').hidden = !e.target.checked;
@@ -381,47 +570,66 @@ $('scheduleToggle').addEventListener('change', (e) => {
 $('startCampaign').addEventListener('click', async () => {
   try {
     const templateId = $('campaignTemplate').value;
-    if (!templateId) return alert('Save a template first.');
+    if (!templateId) {
+      toast('Save a template first', 'error');
+      return;
+    }
     const body = { templateId, tag: $('campaignTag').value || undefined };
     if ($('scheduleToggle').checked) {
-      if (!$('scheduleTime').value) return alert('Schedule time choose karo.');
+      if (!$('scheduleTime').value) {
+        toast('Choose a schedule time', 'error');
+        return;
+      }
       body.scheduledAt = new Date($('scheduleTime').value).toISOString();
     }
     const campaign = await api('/api/campaign/start', { method: 'POST', body: JSON.stringify(body) });
     if (campaign.status === 'scheduled') {
-      $('campaignStatus').innerHTML = `⏰ Scheduled for ${new Date(campaign.scheduledAt).toLocaleString()} — ${campaign.total} contact(s).`;
+      setMsg('campaignStatus', `Scheduled for ${new Date(campaign.scheduledAt).toLocaleString()} — ${campaign.total} contact(s).`);
+      setVisualizer('idle', 'Scheduled', 'Waiting for send time');
+      toast('Campaign scheduled');
       loadCampaignList();
       return;
     }
     currentCampaignId = campaign.id;
     $('startCampaign').disabled = true;
     $('stopCampaign').disabled = false;
+    setVisualizer('running', 'Sending now', 'Live');
+    setLive('Sending emails…', 'busy');
     pollStatus();
-    pollTimer = setInterval(pollStatus, 3000);
+    pollTimer = setInterval(pollStatus, 2500);
   } catch (e) {
-    $('campaignStatus').textContent = e.message;
-    $('campaignStatus').className = 'msg error';
+    setMsg('campaignStatus', e.message, true);
+    toast(e.message, 'error');
   }
 });
 
 $('stopCampaign').addEventListener('click', async () => {
   if (!currentCampaignId) return;
   await api(`/api/campaign/${currentCampaignId}/stop`, { method: 'POST' });
+  toast('Stop requested');
 });
 
 async function pollStatus() {
   if (!currentCampaignId) return;
-  const { campaign, logs } = await api(`/api/campaign/${currentCampaignId}/status`);
-  $('campaignStatus').innerHTML = `Status: <b>${campaign.status}</b> &mdash; Sent: ${campaign.sent} / Failed: ${campaign.failed} / Skipped: ${campaign.skipped} / Total: ${campaign.total}`;
-  $('campaignLogs').innerHTML = logs.slice().reverse().map((l) => `
-    <div class="list-row"><span>${l.email}</span><span class="status-${l.status}">${l.status}${l.error ? ` (${l.error})` : ''}</span></div>
-  `).join('');
+  try {
+    const { campaign, logs } = await api(`/api/campaign/${currentCampaignId}/status`);
+    setMsg('campaignStatus', `Status: ${campaign.status} — sent ${campaign.sent} / failed ${campaign.failed} / skipped ${campaign.skipped} / total ${campaign.total}`);
+    renderViz(campaign, logs);
+    $('campaignLogs').innerHTML = logs.slice().reverse().map((l) => `
+      <div class="list-row"><span>${esc(l.email)}</span><span class="status-${esc(l.status)}">${esc(l.status)}${l.error ? ` (${esc(l.error)})` : ''}</span></div>
+    `).join('');
 
-  if (campaign.status === 'completed' || campaign.status === 'stopped') {
-    clearInterval(pollTimer);
-    $('startCampaign').disabled = false;
-    $('stopCampaign').disabled = true;
-    loadCampaignList();
+    if (campaign.status === 'completed' || campaign.status === 'stopped') {
+      clearInterval(pollTimer);
+      $('startCampaign').disabled = false;
+      $('stopCampaign').disabled = true;
+      setVisualizer('done', campaign.status === 'completed' ? 'Finished' : 'Stopped', campaign.status);
+      setLive(campaign.status === 'completed' ? 'Campaign finished' : 'Campaign stopped', 'good');
+      toast(campaign.status === 'completed' ? 'Campaign finished' : 'Campaign stopped');
+      loadCampaignList();
+    }
+  } catch (e) {
+    setMsg('campaignStatus', e.message, true);
   }
 }
 
@@ -429,31 +637,30 @@ async function loadCampaignList() {
   const campaigns = await api('/api/campaigns');
   $('campaignList').innerHTML = campaigns.slice(0, 20).map((c) => `
     <div class="list-row">
-      <span>${c.status === 'scheduled' ? `⏰ Scheduled for ${new Date(c.scheduledAt).toLocaleString()}` : new Date(c.createdAt).toLocaleString()}</span>
-      <span>${c.status} &mdash; sent ${c.sent}/${c.total}</span>
-    </div>`).join('') || '<div class="list-row">Koi campaign nahi hui abhi.</div>';
+      <span>${c.status === 'scheduled' ? `Scheduled for ${esc(new Date(c.scheduledAt).toLocaleString())}` : esc(new Date(c.createdAt).toLocaleString())}</span>
+      <span>${esc(c.status)} — sent ${c.sent}/${c.total}</span>
+    </div>`).join('') || '<div class="list-row">No campaigns yet.</div>';
 }
 
-// ---------- Dashboard ----------
 let dashData = null;
 let activeDashList = 'pending';
 
-const STATUS_ICON = { good: '✅', warn: '⚠️', bad: '❌', neutral: 'ℹ️' };
+const STATUS_ICON = { good: 'OK', warn: '!', bad: 'X', neutral: 'i' };
 
 function renderMeter(health) {
   $('healthMeterBox').innerHTML = `
     <div class="meter-wrap">
       <div class="meter-score-row">
-        <div class="meter-score">${health.riskPercent}%<span style="font-size:16px;color:#9ca3af"> spam risk</span></div>
-        <div class="meter-rating ${health.ratingColor}">${health.rating}</div>
+        <div class="meter-score">${health.riskPercent}%<span style="font-size:16px;color:#8a7763"> spam risk</span></div>
+        <div class="meter-rating ${esc(health.ratingColor)}">${esc(health.rating)}</div>
       </div>
-      <div class="meter-bar-track"><div class="meter-bar-fill ${health.ratingColor}" style="width:${health.riskPercent}%"></div></div>
-      <p class="hint" style="margin-top:-8px;margin-bottom:14px">Safety score: ${health.score}/100 &mdash; jitna kam risk %, utna better.</p>
+      <div class="meter-bar-track"><div class="meter-bar-fill ${esc(health.ratingColor)}" style="width:${Number(health.riskPercent) || 0}%"></div></div>
+      <p class="hint" style="margin-top:-8px;margin-bottom:14px">Safety score: ${health.score}/100 — lower risk is better.</p>
       <div class="meter-checks">
         ${health.checks.map((c) => `
           <div class="meter-check">
-            <span class="icon">${STATUS_ICON[c.status]}</span>
-            <span class="txt"><b>${c.label}${c.weight ? ` <span class="risk-badge ${c.status}">+${c.riskPercent}% risk</span>` : ''}</b><span>${c.message}</span></span>
+            <span class="icon">${STATUS_ICON[c.status] || ''}</span>
+            <span class="txt"><b>${esc(c.label)}${c.weight ? ` <span class="risk-badge ${esc(c.status)}">+${c.riskPercent}% risk</span>` : ''}</b><span>${esc(c.message)}</span></span>
           </div>
         `).join('')}
       </div>
@@ -463,14 +670,14 @@ function renderMeter(health) {
 function renderDashList() {
   const items = (dashData?.lists?.[activeDashList]) || [];
   if (!items.length) {
-    $('dashListBox').innerHTML = '<div class="list-row">Yahan kuch nahi hai.</div>';
+    $('dashListBox').innerHTML = '<div class="list-row">Nothing in this list yet.</div>';
     return;
   }
   $('dashListBox').innerHTML = items.map((c) => {
     let extra = '';
-    if (activeDashList === 'sent') extra = `sent ${new Date(c.lastSentAt).toLocaleString()}`;
+    if (activeDashList === 'sent') extra = c.lastSentAt ? `sent ${new Date(c.lastSentAt).toLocaleString()}` : '';
     if (activeDashList === 'bounced') extra = c.lastBounceReason || '';
-    return `<div class="list-row"><span>${c.email} ${c.name ? `(${c.name})` : ''}</span><span style="color:#6b7280;font-size:12px">${extra}</span></div>`;
+    return `<div class="list-row"><span>${esc(c.email)} ${c.name ? `(${esc(c.name)})` : ''}</span><span style="color:#8a7763;font-size:12px">${esc(extra)}</span></div>`;
   }).join('');
 }
 
@@ -483,7 +690,7 @@ document.querySelectorAll('.dash-tab').forEach((btn) => {
   });
 });
 
-const ALERT_ICON = { critical: '🚨', warning: '⚠️', info: 'ℹ️' };
+const ALERT_ICON = { critical: '!', warning: '!', info: 'i' };
 let seenAlertIds = new Set();
 
 function renderAlerts(alerts) {
@@ -492,18 +699,16 @@ function renderAlerts(alerts) {
     return;
   }
   $('alertsBox').innerHTML = alerts.map((a) => `
-    <div class="alert-box ${a.severity}">
-      <span class="icon">${ALERT_ICON[a.severity] || 'ℹ️'}</span>
+    <div class="alert-box ${esc(a.severity)}">
+      <span class="icon">${ALERT_ICON[a.severity] || 'i'}</span>
       <div class="body">
-        <b>${a.title}</b>
-        <p class="msg-line">${a.message}</p>
-        <p class="fix-line"><b>Kya karo:</b> ${a.fix}</p>
+        <b>${esc(a.title)}</b>
+        <p class="msg-line">${esc(a.message)}</p>
+        <p class="fix-line"><b>What to do:</b> ${esc(a.fix)}</p>
       </div>
     </div>
   `).join('');
 
-  // Best-effort browser notification for NEW critical alerts (only while this tab/browser
-  // is open and permission is granted — this is not a phone push notification).
   if ('Notification' in window) {
     const newCritical = alerts.filter((a) => a.severity === 'critical' && !seenAlertIds.has(a.id));
     if (newCritical.length) {
@@ -523,24 +728,24 @@ function renderCostMeter(usage) {
   $('costMeterBox').innerHTML = `
     <div class="cost-meter">
       <div class="cost-row">
-        <span class="cost-amount">$${usage.spentUsd.toFixed(4)}</span>
+        <span class="cost-amount">$${(Number(usage.spentUsd) || 0).toFixed(4)}</span>
         <span class="cost-limit">of $${usage.maxUsd} limit (${usage.percentUsed}%)</span>
       </div>
-      <div class="meter-bar-track"><div class="meter-bar-fill ${color}" style="width:${Math.min(100, usage.percentUsed)}%"></div></div>
+      <div class="meter-bar-track"><div class="meter-bar-fill ${color}" style="width:${Math.min(100, Number(usage.percentUsed) || 0)}%"></div></div>
     </div>`;
 }
 
 async function loadDashboard() {
   dashData = await api('/api/dashboard');
   const c = dashData.counts;
-  $('cardTotal').textContent = c.total;
-  $('cardPending').textContent = c.pending;
-  $('cardQueue').textContent = c.inQueue;
-  $('cardSent').textContent = c.sent;
-  $('cardSmsSent').textContent = c.smsSent;
-  $('cardBounced').textContent = c.bounced;
-  $('cardInvalid').textContent = c.invalid;
-  $('cardSuppressed').textContent = c.suppressed;
+  animateNumber($('cardTotal'), c.total);
+  animateNumber($('cardPending'), c.pending);
+  animateNumber($('cardQueue'), c.inQueue);
+  animateNumber($('cardSent'), c.sent);
+  animateNumber($('cardSmsSent'), c.smsSent);
+  animateNumber($('cardBounced'), c.bounced);
+  animateNumber($('cardInvalid'), c.invalid);
+  animateNumber($('cardSuppressed'), c.suppressed);
   renderMeter(dashData.health);
   renderDashList();
   renderAlerts(dashData.alerts || []);
@@ -551,21 +756,20 @@ setInterval(() => {
   if (document.getElementById('tab-dashboard').classList.contains('active')) loadDashboard();
 }, 5000);
 
-// ================= SMS MARKETING =================
 async function loadSmsDashboard() {
   const d = await api('/api/sms/dashboard');
-  $('smsCardTotal').textContent = d.total;
-  $('smsCardSent').textContent = d.sent;
-  $('smsCardFailed').textContent = d.failed;
-  $('smsCardSuppressed').textContent = d.suppressed;
+  animateNumber($('smsCardTotal'), d.total);
+  animateNumber($('smsCardSent'), d.sent);
+  animateNumber($('smsCardFailed'), d.failed);
+  animateNumber($('smsCardSuppressed'), d.suppressed);
 }
 
 async function loadSmsContacts() {
   const contacts = await api('/api/sms/contacts');
   $('smsContactList').innerHTML = contacts.map((c) => `
     <div class="list-row">
-      <span>${c.phone} ${c.name ? `(${c.name})` : ''} &mdash; <span class="status-${c.status}">${c.status}</span></span>
-      <button data-id="${c.id}" class="deleteSmsContact">Remove</button>
+      <span>${esc(c.phone)} ${c.name ? `(${esc(c.name)})` : ''} — <span class="status-${esc(c.status)}">${esc(c.status)}</span></span>
+      <button data-id="${esc(c.id)}" class="deleteSmsContact btn-ghost" type="button">Remove</button>
     </div>`).join('') || '<div class="list-row">No SMS contacts yet.</div>';
 
   document.querySelectorAll('.deleteSmsContact').forEach((btn) => {
@@ -578,16 +782,25 @@ async function loadSmsContacts() {
 
 $('smsExtractBtn').addEventListener('click', async () => {
   const rawText = $('smsRawData').value.trim();
-  if (!rawText) return;
+  if (!rawText) {
+    toast('Paste numbers first', 'error');
+    return;
+  }
+  setMsg('smsExtractMsg', 'Extracting numbers…');
+  showOverlay('Extracting phones', 'Finding numbers in the pasted text', ['Read text', 'Normalize numbers', 'Save new contacts']);
+  overlayStep(1);
   try {
     const result = await api('/api/sms/contacts/extract', { method: 'POST', body: JSON.stringify({ rawText }) });
-    $('smsExtractMsg').textContent = `Found ${result.totalExtracted} number(s), added ${result.addedCount} new contact(s).`;
+    hideOverlay();
+    setMsg('smsExtractMsg', `Found ${result.totalExtracted} number(s), added ${result.addedCount} new contact(s).`);
+    toast(`Added ${result.addedCount} SMS contact(s)`);
     $('smsRawData').value = '';
     loadSmsContacts();
     loadSmsDashboard();
   } catch (e) {
-    $('smsExtractMsg').textContent = e.message;
-    $('smsExtractMsg').className = 'msg error';
+    hideOverlay();
+    setMsg('smsExtractMsg', e.message, true);
+    toast(e.message, 'error');
   }
 });
 
@@ -595,11 +808,11 @@ async function loadSmsTemplates() {
   const templates = await api('/api/sms/templates');
   $('smsTemplateList').innerHTML = templates.map((t) => `
     <div class="list-row">
-      <span>${t.name} &mdash; <em>${t.body.slice(0, 60)}${t.body.length > 60 ? '...' : ''}</em></span>
-      <button data-id="${t.id}" class="deleteSmsTemplate">Delete</button>
+      <span>${esc(t.name)} — <em>${esc(t.body.slice(0, 60))}${t.body.length > 60 ? '...' : ''}</em></span>
+      <button data-id="${esc(t.id)}" class="deleteSmsTemplate btn-ghost" type="button">Delete</button>
     </div>`).join('') || '<div class="list-row">No SMS templates yet.</div>';
 
-  $('smsCampaignTemplate').innerHTML = templates.map((t) => `<option value="${t.id}">${t.name}</option>`).join('');
+  $('smsCampaignTemplate').innerHTML = templates.map((t) => `<option value="${esc(t.id)}">${esc(t.name)}</option>`).join('');
 
   document.querySelectorAll('.deleteSmsTemplate').forEach((btn) => {
     btn.addEventListener('click', async () => {
@@ -615,14 +828,14 @@ $('smsSaveTemplate').addEventListener('click', async () => {
       method: 'POST',
       body: JSON.stringify({ name: $('smsTplName').value, body: $('smsTplBody').value, ctaUrl: $('smsTplCtaUrl').value })
     });
-    $('smsTemplateMsg').textContent = 'SMS template saved.';
-    $('smsTemplateMsg').className = 'msg';
+    setMsg('smsTemplateMsg', 'SMS template saved.');
+    toast('SMS template saved');
     $('smsTplName').value = '';
     $('smsTplBody').value = '';
     loadSmsTemplates();
   } catch (e) {
-    $('smsTemplateMsg').textContent = e.message;
-    $('smsTemplateMsg').className = 'msg error';
+    setMsg('smsTemplateMsg', e.message, true);
+    toast(e.message, 'error');
   }
 });
 
@@ -632,47 +845,96 @@ let smsPollTimer = null;
 $('smsStartCampaign').addEventListener('click', async () => {
   try {
     const templateId = $('smsCampaignTemplate').value;
-    if (!templateId) return alert('Save an SMS template first.');
+    if (!templateId) {
+      toast('Save an SMS template first', 'error');
+      return;
+    }
     const campaign = await api('/api/sms/campaign/start', { method: 'POST', body: JSON.stringify({ templateId }) });
     currentSmsCampaignId = campaign.id;
     $('smsStartCampaign').disabled = true;
     $('smsStopCampaign').disabled = false;
+    $('smsVisualizer').className = 'visualizer running compact';
+    $('smsVizKicker').textContent = 'Sending';
+    setLive('Sending SMS…', 'busy');
     pollSmsStatus();
-    smsPollTimer = setInterval(pollSmsStatus, 3000);
+    smsPollTimer = setInterval(pollSmsStatus, 2500);
   } catch (e) {
-    $('smsCampaignStatus').textContent = e.message;
-    $('smsCampaignStatus').className = 'msg error';
+    setMsg('smsCampaignStatus', e.message, true);
+    toast(e.message, 'error');
   }
 });
 
 $('smsStopCampaign').addEventListener('click', async () => {
   if (!currentSmsCampaignId) return;
   await api(`/api/sms/campaign/${currentSmsCampaignId}/stop`, { method: 'POST' });
+  toast('SMS stop requested');
 });
 
 async function pollSmsStatus() {
   if (!currentSmsCampaignId) return;
-  const { campaign, logs } = await api(`/api/sms/campaign/${currentSmsCampaignId}/status`);
-  $('smsCampaignStatus').innerHTML = `Status: <b>${campaign.status}</b> &mdash; Sent: ${campaign.sent} / Failed: ${campaign.failed} / Skipped: ${campaign.skipped} / Total: ${campaign.total}`;
-  $('smsCampaignLogs').innerHTML = logs.slice().reverse().map((l) => `
-    <div class="list-row"><span>${l.phone}</span><span class="status-${l.status}">${l.status}${l.error ? ` (${l.error})` : ''}</span></div>
-  `).join('');
+  try {
+    const { campaign, logs } = await api(`/api/sms/campaign/${currentSmsCampaignId}/status`);
+    setMsg('smsCampaignStatus', `Status: ${campaign.status} — sent ${campaign.sent} / failed ${campaign.failed} / skipped ${campaign.skipped} / total ${campaign.total}`);
+    const done = (campaign.sent || 0) + (campaign.failed || 0) + (campaign.skipped || 0);
+    const pct = campaign.total ? Math.round((done / campaign.total) * 100) : 0;
+    $('smsVizBarFill').style.width = `${pct}%`;
+    $('smsCampaignLogs').innerHTML = logs.slice().reverse().map((l) => `
+      <div class="list-row"><span>${esc(l.phone)}</span><span class="status-${esc(l.status)}">${esc(l.status)}${l.error ? ` (${esc(l.error)})` : ''}</span></div>
+    `).join('');
 
-  if (campaign.status === 'completed' || campaign.status === 'stopped') {
-    clearInterval(smsPollTimer);
-    $('smsStartCampaign').disabled = false;
-    $('smsStopCampaign').disabled = true;
-    loadSmsDashboard();
+    if (campaign.status === 'completed' || campaign.status === 'stopped') {
+      clearInterval(smsPollTimer);
+      $('smsStartCampaign').disabled = false;
+      $('smsStopCampaign').disabled = true;
+      $('smsVisualizer').className = 'visualizer done compact';
+      $('smsVizKicker').textContent = campaign.status;
+      setLive('SMS campaign done', 'good');
+      loadSmsDashboard();
+    }
+  } catch (e) {
+    setMsg('smsCampaignStatus', e.message, true);
   }
 }
 
-loadSettings();
-loadTemplates();
-loadContacts();
-loadHealth();
-loadDashboard();
-loadCampaignTags();
-loadCampaignList();
-loadSmsDashboard();
-loadSmsContacts();
-loadSmsTemplates();
+async function refreshJourney() {
+  try {
+    const [settings, templates, contacts] = await Promise.all([
+      api('/api/settings'),
+      api('/api/templates'),
+      api('/api/contacts')
+    ]);
+    updateJourneyDone({
+      hasSmtp: !!(settings.smtp?.host && settings.smtp?.user),
+      hasTemplate: templates.length > 0,
+      hasContacts: contacts.length > 0
+    });
+  } catch {
+    // ignore
+  }
+}
+
+async function boot() {
+  try {
+    setLive('Loading…', 'busy');
+    await Promise.all([
+      loadSettings(),
+      loadTemplates(),
+      loadContacts(),
+      loadHealth(),
+      loadDashboard(),
+      loadCampaignTags(),
+      loadCampaignList(),
+      loadSmsDashboard(),
+      loadSmsContacts(),
+      loadSmsTemplates()
+    ]);
+    refreshPreview();
+    await refreshJourney();
+    setLive('Ready', 'good');
+  } catch (e) {
+    setLive('Server not ready');
+    toast(e.message || 'Could not load the app', 'error');
+  }
+}
+
+boot();

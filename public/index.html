@@ -3,252 +3,420 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Neercred Email Marketing</title>
+<title>Neercred — Email Marketing</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,650;9..144,700&family=Nunito+Sans:ital,opsz,wght@0,6..12,400;0,6..12,600;0,6..12,700;1,6..12,400&display=swap" rel="stylesheet" />
 <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-<header>
-  <h1>Neercred &mdash; Email Marketing</h1>
-  <nav>
-    <button data-tab="dashboard" class="tab active">📊 Dashboard</button>
-    <button data-tab="settings" class="tab">⚙️ Settings</button>
-    <button data-tab="templates" class="tab">✉️ Templates</button>
-    <button data-tab="contacts" class="tab">👥 Contacts</button>
-    <button data-tab="campaign" class="tab">🚀 Send Campaign</button>
-    <button data-tab="sms" class="tab">📱 SMS Marketing</button>
-  </nav>
+<div class="page-glow" aria-hidden="true"></div>
+
+<header class="topbar">
+  <div class="brand">
+    <span class="brand-mark" aria-hidden="true">N</span>
+    <div>
+      <h1>Neercred Mail</h1>
+      <p class="brand-sub">Simple email + SMS marketing, step by step</p>
+    </div>
+  </div>
+  <div class="live-pill" id="livePill">
+    <span class="pulse-dot"></span>
+    <span id="livePillText">Ready</span>
+  </div>
 </header>
+
+<section class="journey" aria-label="How this tool works">
+  <button type="button" class="journey-step active" data-goto="settings" data-step="1">
+    <span class="step-num">1</span>
+    <span class="step-copy">
+      <strong>Connect</strong>
+      <em>Email / SMS account</em>
+    </span>
+  </button>
+  <span class="journey-line" aria-hidden="true"></span>
+  <button type="button" class="journey-step" data-goto="templates" data-step="2">
+    <span class="step-num">2</span>
+    <span class="step-copy">
+      <strong>Write</strong>
+      <em>Make a template</em>
+    </span>
+  </button>
+  <span class="journey-line" aria-hidden="true"></span>
+  <button type="button" class="journey-step" data-goto="contacts" data-step="3">
+    <span class="step-num">3</span>
+    <span class="step-copy">
+      <strong>Add people</strong>
+      <em>Paste &amp; extract</em>
+    </span>
+  </button>
+  <span class="journey-line" aria-hidden="true"></span>
+  <button type="button" class="journey-step" data-goto="campaign" data-step="4">
+    <span class="step-num">4</span>
+    <span class="step-copy">
+      <strong>Send</strong>
+      <em>Watch it go out</em>
+    </span>
+  </button>
+</section>
+
+<nav class="tabs" aria-label="Main sections">
+  <button data-tab="dashboard" class="tab active">Dashboard</button>
+  <button data-tab="settings" class="tab">Settings</button>
+  <button data-tab="templates" class="tab">Templates</button>
+  <button data-tab="contacts" class="tab">Contacts</button>
+  <button data-tab="campaign" class="tab">Send Campaign</button>
+  <button data-tab="sms" class="tab">SMS</button>
+</nav>
 
 <main>
   <section id="tab-dashboard" class="panel active">
-    <h2>📊 Dashboard — sab kuch ek jagah</h2>
+    <div class="panel-head">
+      <div>
+        <p class="eyebrow">Overview</p>
+        <h2>Everything in one place</h2>
+        <p class="lede">Numbers, warnings, and list health — refresh automatically every few seconds.</p>
+      </div>
+    </div>
 
-    <div id="alertsBox"></div>
+    <div id="alertsBox" class="alerts"></div>
 
     <div class="big-cards">
-      <div class="big-card neutral">
+      <div class="big-card neutral" style="--i:0">
         <span class="big-num" id="cardTotal">0</span>
-        <span class="big-label">Total Contacts</span>
+        <span class="big-label">Total contacts</span>
       </div>
-      <div class="big-card pending">
+      <div class="big-card pending" style="--i:1">
         <span class="big-num" id="cardPending">0</span>
-        <span class="big-label">⏳ Emails Pending</span>
+        <span class="big-label">Emails pending</span>
       </div>
-      <div class="big-card neutral">
+      <div class="big-card queue" style="--i:2">
         <span class="big-num" id="cardQueue">0</span>
-        <span class="big-label">📤 In Queue (scheduled/sending)</span>
+        <span class="big-label">In queue</span>
       </div>
-      <div class="big-card good">
+      <div class="big-card good" style="--i:3">
         <span class="big-num" id="cardSent">0</span>
-        <span class="big-label">✅ Emails Sent</span>
+        <span class="big-label">Emails sent</span>
       </div>
-      <div class="big-card good">
+      <div class="big-card good" style="--i:4">
         <span class="big-num" id="cardSmsSent">0</span>
-        <span class="big-label">📱 SMS Sent</span>
+        <span class="big-label">SMS sent</span>
       </div>
-      <div class="big-card bad">
+      <div class="big-card bad" style="--i:5">
         <span class="big-num" id="cardBounced">0</span>
-        <span class="big-label">📭 Bounced</span>
+        <span class="big-label">Bounced</span>
       </div>
-      <div class="big-card warn">
+      <div class="big-card warn" style="--i:6">
         <span class="big-num" id="cardInvalid">0</span>
-        <span class="big-label">⚠️ Invalid</span>
+        <span class="big-label">Invalid</span>
       </div>
-      <div class="big-card neutral">
+      <div class="big-card muted" style="--i:7">
         <span class="big-num" id="cardSuppressed">0</span>
-        <span class="big-label">🚫 Unsubscribed</span>
+        <span class="big-label">Unsubscribed</span>
       </div>
     </div>
 
-    <h3>💰 API Spend</h3>
-    <p class="hint">Anthropic API (extraction + AI personalization) par kitna spend hua hai — jab limit ke paas pahunchoge to yahan aur alert me warning aa jayegi, recharge/limit-badhaao ka time pata chal jayega.</p>
-    <div id="costMeterBox"></div>
-
-    <h3>🩺 Spam Risk Meter</h3>
-    <p class="hint">Yeh meter un sab wajahon ko check karta hai jinse email spam me jaati hai ya account risky ho jaata hai — har cheez ka apna % risk contribution dikhta hai.</p>
-    <div id="healthMeterBox"></div>
-
-    <h3>📋 Detail Lists</h3>
-    <div class="dash-tabs">
-      <button class="dash-tab active" data-list="pending">⏳ Pending</button>
-      <button class="dash-tab" data-list="sent">✅ Sent</button>
-      <button class="dash-tab" data-list="bounced">📭 Bounced</button>
-      <button class="dash-tab" data-list="invalid">⚠️ Invalid</button>
-      <button class="dash-tab" data-list="suppressed">🚫 Unsubscribed</button>
+    <div class="split-meters">
+      <article class="card">
+        <h3>API spend</h3>
+        <p class="hint">Anthropic cost for extraction + personalization. When the limit is hit, AI pauses automatically.</p>
+        <div id="costMeterBox"></div>
+      </article>
+      <article class="card">
+        <h3>Spam risk meter</h3>
+        <p class="hint">Real checks that affect inbox placement — domain, SPF, pace, wording, list quality.</p>
+        <div id="healthMeterBox"></div>
+      </article>
     </div>
-    <div id="dashListBox" class="list"></div>
+
+    <article class="card">
+      <h3>Detail lists</h3>
+      <div class="dash-tabs">
+        <button class="dash-tab active" data-list="pending">Pending</button>
+        <button class="dash-tab" data-list="sent">Sent</button>
+        <button class="dash-tab" data-list="bounced">Bounced</button>
+        <button class="dash-tab" data-list="invalid">Invalid</button>
+        <button class="dash-tab" data-list="suppressed">Unsubscribed</button>
+      </div>
+      <div id="dashListBox" class="list"></div>
+    </article>
   </section>
 
   <section id="tab-settings" class="panel">
-    <h2>⚙️ Settings</h2>
-
-    <h3>✉️ Mail Connection <span id="smtpStatusDot" class="status-dot neutral"></span> <span id="smtpStatusText" class="status-text">Not tested yet</span></h3>
-    <div class="grid">
-      <label>SMTP Host <input id="smtpHost" placeholder="smtp.gmail.com" /></label>
-      <label>SMTP Port <input id="smtpPort" placeholder="587" /></label>
-      <label>Secure (SSL)? <select id="smtpSecure"><option value="false">No (STARTTLS / 587)</option><option value="true">Yes (SSL / 465)</option></select></label>
-      <label>SMTP User (email) <input id="smtpUser" placeholder="you@neercred.com" /></label>
-      <label>SMTP Password / App Password <input id="smtpPass" type="password" /></label>
-      <label>From Name <input id="fromName" placeholder="Neercred" /></label>
-      <label>From Email <input id="fromEmail" placeholder="you@neercred.com" /></label>
-    </div>
-    <button id="testSmtpBtn">🔌 Test Connection</button>
-    <p id="smtpTestMsg" class="msg"></p>
-
-    <h3 style="margin-top:28px">🔑 API Keys</h3>
-    <p class="hint">Default me Anthropic key hai (email extraction aur AI personalization ke liye use hoti hai). Chaho to "+ Add API Key" se aur keys bhi add kar sakte ho (future providers ke liye) — har ek ke saamne green/red status dikhega.</p>
-    <div id="apiKeyList"></div>
-    <button id="addApiKeyBtn">+ Add API Key</button>
-
-    <h3 style="margin-top:28px">💰 API Cost & Budget</h3>
-    <p class="hint">Anthropic API paid hai (token ke hisaab se charge hota hai). Yahan max limit set karo — jab spend us limit ke paas/upar pahunchega, Dashboard pe warning aayegi aur limit cross hote hi AI features (extraction/personalization) automatically ruk jayenge taaki bill na badhe, jab tak tum limit na badhao.</p>
-    <div class="grid">
-      <label>Max budget ($) <input id="apiMaxBudget" placeholder="10" /></label>
-      <label>Warn at (% of budget) <input id="apiAlertThreshold" placeholder="80" /></label>
-    </div>
-    <p id="budgetSpentInfo" class="hint"></p>
-
-    <h3 style="margin-top:28px">📨 Sending Behaviour</h3>
-    <div class="grid">
-      <label>Delay between emails: min sec <input id="delayMin" placeholder="8" /></label>
-      <label>Delay between emails: max sec <input id="delayMax" placeholder="20" /></label>
-      <label>Max emails per campaign run <input id="dailyLimit" placeholder="300" /></label>
-    </div>
-    <label class="checkbox-row">
-      <input type="checkbox" id="aiPersonalize" />
-      <span>🤖 AI se har email ko individually rewrite karke bhejo (recommended — sab ko ek jaisi bulk mail nahi jaati, har ek personally likha hua lagta hai)</span>
-    </label>
-    <p class="hint">Kaise kaam karta hai: har contact ke liye Claude (Anthropic API) template ka wording thoda alag rewrite karta hai — offer, image, link, unsubscribe sab same rehta hai, sirf tone/sentence structure har mail me thoda unique ho jaata hai. Anthropic API key upar zaroori hai.</p>
-
-    <h3 style="margin-top:28px">📱 SMS Provider (Twilio) <span id="smsStatusDot" class="status-dot neutral"></span> <span id="smsStatusText" class="status-text">Not tested yet</span></h3>
-    <p class="hint">⚠️ Honest note: India ke DND (National Do Not Disturb) registry ko koi free public API check nahi karta. Real Indian promotional SMS ke liye DLT-registered provider (jaise MSG91, Kaleyra, Gupshup) chahiye — wahi operator-level pe DND numbers automatically block karta hai. Twilio DLT-registered nahi hai India ke liye, isliye testing/non-Indian numbers ke liye theek hai.</p>
-    <div class="grid">
-      <label>Twilio Account SID <input id="smsSid" placeholder="ACxxxxxxxx..." /></label>
-      <label>Twilio Auth Token <input id="smsToken" type="password" /></label>
-      <label>Twilio From Number <input id="smsFrom" placeholder="+1415XXXXXXX" /></label>
-      <label>Delay between SMS: min sec <input id="smsDelayMin" placeholder="5" /></label>
-      <label>Delay between SMS: max sec <input id="smsDelayMax" placeholder="15" /></label>
-      <label>Max SMS per campaign run <input id="smsDailyLimit" placeholder="200" /></label>
-    </div>
-    <button id="testSmsBtn">🔌 Test SMS Connection</button>
-    <p id="smsTestMsg" class="msg"></p>
-
-    <h3 style="margin-top:28px">🔗 Lead Webhook</h3>
-    <p class="hint">Yeh URL + secret apne website developer ko do — jab bhi koi neercred.com/apply pe form submit kare, unka server yahan POST kare taaki hume asli lead pata chale (na ki sirf click). Body: <code>{ "secret": "...", "email": "...", "name": "..." }</code></p>
-    <div class="grid">
-      <label>Webhook URL <input id="webhookUrl" readonly /></label>
-      <label>Secret <input id="webhookSecret" readonly /></label>
+    <div class="panel-head">
+      <div>
+        <p class="eyebrow">Step 1</p>
+        <h2>Connect your accounts</h2>
+        <p class="lede">Save once. Test the green/red dots before you send anything.</p>
+      </div>
     </div>
 
-    <button id="saveSettings">💾 Save Settings</button>
-    <p class="hint">Tip: Gmail/Outlook block bulk sending fast. For real bulk marketing, use a transactional ESP (SendGrid / Amazon SES / Mailgun / Brevo) SMTP credentials here for far better deliverability, and always set up SPF, DKIM and DMARC on your sending domain.</p>
+    <article class="card">
+      <h3>Mail connection <span id="smtpStatusDot" class="status-dot neutral"></span> <span id="smtpStatusText" class="status-text">Not tested yet</span></h3>
+      <div class="grid">
+        <label>SMTP Host <input id="smtpHost" placeholder="smtp.gmail.com" autocomplete="off" /></label>
+        <label>SMTP Port <input id="smtpPort" placeholder="587" inputmode="numeric" /></label>
+        <label>Secure (SSL)? <select id="smtpSecure"><option value="false">No (STARTTLS / 587)</option><option value="true">Yes (SSL / 465)</option></select></label>
+        <label>SMTP User (email) <input id="smtpUser" placeholder="you@neercred.com" autocomplete="off" /></label>
+        <label>SMTP Password / App Password <input id="smtpPass" type="password" autocomplete="new-password" /></label>
+        <label>From Name <input id="fromName" placeholder="Neercred" /></label>
+        <label>From Email <input id="fromEmail" placeholder="you@neercred.com" /></label>
+      </div>
+      <button type="button" id="testSmtpBtn" class="btn-ghost">Test connection</button>
+      <p id="smtpTestMsg" class="msg"></p>
+    </article>
+
+    <article class="card">
+      <h3>API keys</h3>
+      <p class="hint">Anthropic is used for email extraction and AI personalization. Extra keys can be stored for later.</p>
+      <div id="apiKeyList"></div>
+      <button type="button" id="addApiKeyBtn" class="btn-ghost">+ Add API key</button>
+    </article>
+
+    <article class="card">
+      <h3>API cost &amp; budget</h3>
+      <p class="hint">Set a max dollar limit. AI features stop automatically when spend reaches it.</p>
+      <div class="grid">
+        <label>Max budget ($) <input id="apiMaxBudget" placeholder="10" inputmode="decimal" /></label>
+        <label>Warn at (% of budget) <input id="apiAlertThreshold" placeholder="80" inputmode="numeric" /></label>
+      </div>
+      <p id="budgetSpentInfo" class="hint"></p>
+    </article>
+
+    <article class="card">
+      <h3>Sending behaviour</h3>
+      <div class="grid">
+        <label>Delay between emails: min sec <input id="delayMin" placeholder="8" inputmode="numeric" /></label>
+        <label>Delay between emails: max sec <input id="delayMax" placeholder="20" inputmode="numeric" /></label>
+        <label>Max emails per campaign run <input id="dailyLimit" placeholder="300" inputmode="numeric" /></label>
+      </div>
+      <label class="checkbox-row">
+        <input type="checkbox" id="aiPersonalize" />
+        <span>Rewrite each email individually with AI (same offer, unique wording)</span>
+      </label>
+      <p class="hint">Needs a working Anthropic key. If AI fails for one person, the original template still sends.</p>
+    </article>
+
+    <article class="card">
+      <h3>SMS provider (Twilio) <span id="smsStatusDot" class="status-dot neutral"></span> <span id="smsStatusText" class="status-text">Not tested yet</span></h3>
+      <p class="hint">India promotional SMS needs a DLT-registered provider. Twilio here is for testing / non-Indian numbers.</p>
+      <div class="grid">
+        <label>Twilio Account SID <input id="smsSid" placeholder="ACxxxxxxxx..." autocomplete="off" /></label>
+        <label>Twilio Auth Token <input id="smsToken" type="password" autocomplete="new-password" /></label>
+        <label>Twilio From Number <input id="smsFrom" placeholder="+1415XXXXXXX" /></label>
+        <label>Delay between SMS: min sec <input id="smsDelayMin" placeholder="5" inputmode="numeric" /></label>
+        <label>Delay between SMS: max sec <input id="smsDelayMax" placeholder="15" inputmode="numeric" /></label>
+        <label>Max SMS per campaign run <input id="smsDailyLimit" placeholder="200" inputmode="numeric" /></label>
+      </div>
+      <button type="button" id="testSmsBtn" class="btn-ghost">Test SMS connection</button>
+      <p id="smsTestMsg" class="msg"></p>
+    </article>
+
+    <article class="card">
+      <h3>Lead webhook</h3>
+      <p class="hint">Give this URL + secret to your website. POST <code>{"secret":"...","email":"...","name":"..."}</code> when someone applies.</p>
+      <div class="grid">
+        <label>Webhook URL <input id="webhookUrl" readonly /></label>
+        <label>Secret <input id="webhookSecret" readonly /></label>
+      </div>
+    </article>
+
+    <div class="sticky-actions">
+      <button type="button" id="saveSettings" class="btn-primary">Save settings</button>
+      <p class="hint">For real volume, use SES / SendGrid / Mailgun / Brevo SMTP — and set SPF, DKIM, DMARC on your domain.</p>
+    </div>
     <p id="settingsMsg" class="msg"></p>
   </section>
 
   <section id="tab-templates" class="panel">
-    <h2>✉️ Templates</h2>
-    <p class="hint">Multiple templates bana ke alag-alag bhejo — Dashboard/Templates list me har template ke sent count aur website click-through dikhega, jisse pata chalega konsa template zyada lead la raha hai.</p>
-    <div class="grid">
-      <label>Template Name <input id="tplName" placeholder="Loan Promo - Sept" /></label>
-      <label>Subject <input id="tplSubject" placeholder="Get instant loan approval with Neercred" /></label>
-      <label>Image URL (hosted, e.g. from your website) <input id="tplImage" placeholder="https://neercred.com/assets/promo.jpg" /></label>
+    <div class="panel-head">
+      <div>
+        <p class="eyebrow">Step 2</p>
+        <h2>Write the email</h2>
+        <p class="lede">Use <code>{{name}}</code> and <code>{{email}}</code>. Check spam words before you save.</p>
+      </div>
     </div>
-    <label>HTML Body (use {{name}} and {{email}} as placeholders)
-      <textarea id="tplHtml" rows="10" placeholder="&lt;h2&gt;Hi {{name}},&lt;/h2&gt;&lt;p&gt;Your content...&lt;/p&gt;&lt;img src='https://neercred.com/assets/promo.jpg' style='max-width:100%'/&gt;"></textarea>
-    </label>
 
-    <h3>🔘 Apply Button (optional)</h3>
-    <p class="hint">Yeh ek bada, clickable button email ke end me add kar dega jo seedha diye gaye link (jaise neercred.com/apply) pe le jaata hai. Yeh link automatically track hoti hai — Templates list me dikh jayega kitno ne click kiya.</p>
-    <div class="grid">
-      <label>Button Text <input id="tplCtaText" value="Check Your Eligibility" placeholder="Check Your Eligibility" /></label>
-      <label>Button Link <input id="tplCtaUrl" value="https://neercred.com/apply" placeholder="https://neercred.com/apply" /></label>
+    <div class="compose-grid">
+      <article class="card">
+        <div class="grid">
+          <label>Template name <input id="tplName" placeholder="Loan Promo - Sept" /></label>
+          <label>Subject <input id="tplSubject" placeholder="A clear, calm subject line" /></label>
+          <label class="full">Image URL <input id="tplImage" placeholder="https://neercred.com/assets/promo.jpg" /></label>
+        </div>
+        <label>HTML body
+          <textarea id="tplHtml" rows="10" placeholder="<h2>Hi {{name}},</h2><p>Your content...</p>"></textarea>
+        </label>
+        <h3>Apply button (optional)</h3>
+        <p class="hint">Safer wording: “Check Your Eligibility”, “View Your Offer”, “See Your Options”.</p>
+        <div class="grid">
+          <label>Button text <input id="tplCtaText" value="Check Your Eligibility" /></label>
+          <label>Button link <input id="tplCtaUrl" value="https://neercred.com/apply" /></label>
+        </div>
+        <div class="btn-row">
+          <button type="button" id="checkWordsBtn" class="btn-ghost">Check spam words</button>
+          <button type="button" id="saveTemplate" class="btn-primary">Save as new template</button>
+        </div>
+        <div id="spamWordsResult"></div>
+        <p id="templateMsg" class="msg"></p>
+      </article>
+      <article class="card preview-card">
+        <h3>Live preview</h3>
+        <p class="hint">{{name}} shows as Amit so you can see the finished email.</p>
+        <iframe id="tplPreview" class="preview-frame" sandbox title="Email preview"></iframe>
+      </article>
     </div>
-    <p class="hint">⚠️ Note: "Click here" aur "Apply now" jaisi wording spam filters ko trigger karti hai (upar wale Spam Words checker me bhi flag hoti hai). Kuch safer options: <b>"Check Your Eligibility"</b>, <b>"View Your Offer"</b>, <b>"Start Your Application"</b>, <b>"See Your Options"</b> — link wahi neercred.com/apply rahega, sirf button text change hota hai.</p>
 
-    <button id="checkWordsBtn">🔍 Check for Spam Words</button>
-    <button id="saveTemplate">+ Save as New Template</button>
-    <div id="spamWordsResult"></div>
-    <p id="templateMsg" class="msg"></p>
-    <h3>Saved Templates <span style="font-weight:400;font-size:13px;color:#6b7280">(📧 sent · 🖱️ website clicks)</span></h3>
-    <div id="templateList" class="list"></div>
+    <article class="card">
+      <h3>Saved templates <span class="soft-note">sent · clicks · leads</span></h3>
+      <div id="templateList" class="list"></div>
+    </article>
   </section>
 
   <section id="tab-contacts" class="panel">
-    <h2>Contacts</h2>
-    <label>Paste raw bulk data (CSV, text, copy-pasted list, anything with emails in it)
-      <textarea id="rawData" rows="8" placeholder="Paste your bulk data here..."></textarea>
-    </label>
-    <button id="extractBtn">Extract Emails</button>
-    <p id="extractMsg" class="msg"></p>
+    <div class="panel-head">
+      <div>
+        <p class="eyebrow">Step 3</p>
+        <h2>Add people to email</h2>
+        <p class="lede">Paste any messy list. We pull emails out, skip unsubscribes, and flag bad addresses.</p>
+      </div>
+    </div>
 
-    <h3>List Health</h3>
-    <div id="healthSummary" class="health-grid"></div>
-    <button id="healthCheckBtn">Run List Health Check</button>
-    <p id="healthMsg" class="msg"></p>
-    <p class="hint">Invalid (bad format / disposable / duplicate) and bounced contacts are automatically excluded from sends. Bounced = a real send attempt failed permanently (e.g. "no such user") and that address is now suppressed for good.</p>
+    <article class="card">
+      <label>Paste raw bulk data
+        <textarea id="rawData" rows="8" placeholder="CSV, notes, copy-paste — anything with emails in it"></textarea>
+      </label>
+      <button type="button" id="extractBtn" class="btn-primary">Extract emails</button>
+      <p id="extractMsg" class="msg"></p>
+      <div id="extractProcess" class="mini-process" hidden></div>
+    </article>
 
-    <h3>Contact List (<span id="contactCount">0</span>) <a href="/api/contacts/export.csv" class="export-link">⬇️ Export CSV</a></h3>
-    <p class="hint">Tags se contacts ko group karo (jaise "personal-loan", "business-loan") — click on a contact's tag area to edit them, then use tags in Send Campaign to target just that group.</p>
-    <div id="contactList" class="list"></div>
+    <article class="card">
+      <h3>List health</h3>
+      <div id="healthSummary" class="health-grid"></div>
+      <button type="button" id="healthCheckBtn" class="btn-ghost">Run list health check</button>
+      <p id="healthMsg" class="msg"></p>
+      <p class="hint">Invalid and bounced contacts are never sent. A hard bounce (no such user) is suppressed for good.</p>
+    </article>
+
+    <article class="card">
+      <h3>Contact list (<span id="contactCount">0</span>) <a href="/api/contacts/export.csv" class="export-link">Export CSV</a></h3>
+      <p class="hint">Click the tag chip to group people (e.g. personal-loan). Then target that group in Send Campaign.</p>
+      <div id="contactList" class="list"></div>
+    </article>
   </section>
 
   <section id="tab-campaign" class="panel">
-    <h2>🚀 Send Campaign</h2>
-    <label>Template <select id="campaignTemplate"></select></label>
-    <label>Filter by tag (optional — leave blank for everyone) <select id="campaignTag"><option value="">All contacts</option></select></label>
-    <p class="hint">All active (non-suppressed) contacts matching the filter will be used, one email at a time, with the delay configured in Settings.</p>
+    <div class="panel-head">
+      <div>
+        <p class="eyebrow">Step 4</p>
+        <h2>Send, one by one</h2>
+        <p class="lede">Emails go out with a random delay. Watch each person move from queued → sent.</p>
+      </div>
+    </div>
 
-    <label class="checkbox-row">
-      <input type="checkbox" id="scheduleToggle" />
-      <span>⏰ Abhi nahi, baad me bhejo (schedule)</span>
-    </label>
-    <label id="scheduleTimeRow" hidden>Send at <input id="scheduleTime" type="datetime-local" /></label>
+    <article class="card">
+      <div class="grid">
+        <label>Template <select id="campaignTemplate"></select></label>
+        <label>Filter by tag <select id="campaignTag"><option value="">All contacts</option></select></label>
+      </div>
+      <label class="checkbox-row">
+        <input type="checkbox" id="scheduleToggle" />
+        <span>Schedule for later instead of sending now</span>
+      </label>
+      <label id="scheduleTimeRow" hidden>Send at <input id="scheduleTime" type="datetime-local" /></label>
+      <div class="btn-row">
+        <button type="button" id="startCampaign" class="btn-primary">Start sending</button>
+        <button type="button" id="stopCampaign" class="btn-danger" disabled>Stop</button>
+      </div>
+    </article>
 
-    <button id="startCampaign">Start Sending</button>
-    <button id="stopCampaign" disabled>Stop</button>
-    <div id="campaignStatus" class="msg"></div>
-    <h3>Scheduled / Past Campaigns <a href="/api/logs/export.csv" class="export-link">⬇️ Export Send Logs CSV</a></h3>
-    <div id="campaignList" class="list"></div>
-    <div id="campaignLogs" class="list"></div>
+    <article class="card send-stage">
+      <div id="campaignVisualizer" class="visualizer idle">
+        <div class="viz-orbit" aria-hidden="true"></div>
+        <p class="viz-kicker" id="vizKicker">Waiting to send</p>
+        <h3 id="vizTitle">Campaign is idle</h3>
+        <p id="campaignStatus" class="msg viz-status">Pick a template and start when you are ready.</p>
+        <div class="viz-bar"><div id="vizBarFill" class="viz-bar-fill"></div></div>
+        <div class="viz-counts" id="vizCounts"></div>
+        <div class="viz-lane" id="vizLane"></div>
+      </div>
+    </article>
+
+    <article class="card">
+      <h3>Scheduled / past campaigns <a href="/api/logs/export.csv" class="export-link">Export send logs</a></h3>
+      <div id="campaignList" class="list"></div>
+      <div id="campaignLogs" class="list"></div>
+    </article>
   </section>
 
   <section id="tab-sms" class="panel">
-    <h2>📱 SMS Marketing</h2>
-    <div class="big-cards">
-      <div class="big-card neutral"><span class="big-num" id="smsCardTotal">0</span><span class="big-label">Total Contacts</span></div>
-      <div class="big-card good"><span class="big-num" id="smsCardSent">0</span><span class="big-label">✅ Sent</span></div>
-      <div class="big-card bad"><span class="big-num" id="smsCardFailed">0</span><span class="big-label">❌ Failed</span></div>
-      <div class="big-card neutral"><span class="big-num" id="smsCardSuppressed">0</span><span class="big-label">🚫 Opted-out</span></div>
+    <div class="panel-head">
+      <div>
+        <p class="eyebrow">Parallel channel</p>
+        <h2>SMS marketing</h2>
+        <p class="lede">Same idea as email: extract numbers → save a short message → send one by one.</p>
+      </div>
     </div>
 
-    <h3>👥 SMS Contacts</h3>
-    <label>Paste raw bulk data with phone numbers
-      <textarea id="smsRawData" rows="5" placeholder="9876543210, +919876543211, ..."></textarea>
-    </label>
-    <button id="smsExtractBtn">Extract Phone Numbers</button>
-    <p id="smsExtractMsg" class="msg"></p>
-    <div id="smsContactList" class="list"></div>
-
-    <h3>✉️ SMS Templates</h3>
-    <div class="grid">
-      <label>Template Name <input id="smsTplName" placeholder="Loan Promo SMS" /></label>
-      <label>Apply Link <input id="smsTplCtaUrl" value="https://neercred.com/apply" placeholder="https://neercred.com/apply" /></label>
+    <div class="big-cards four">
+      <div class="big-card neutral" style="--i:0"><span class="big-num" id="smsCardTotal">0</span><span class="big-label">Total contacts</span></div>
+      <div class="big-card good" style="--i:1"><span class="big-num" id="smsCardSent">0</span><span class="big-label">Sent</span></div>
+      <div class="big-card bad" style="--i:2"><span class="big-num" id="smsCardFailed">0</span><span class="big-label">Failed</span></div>
+      <div class="big-card muted" style="--i:3"><span class="big-num" id="smsCardSuppressed">0</span><span class="big-label">Opted-out</span></div>
     </div>
-    <label>Message (use {{name}} as placeholder, 160 chars ≈ 1 SMS segment)
-      <textarea id="smsTplBody" rows="4" placeholder="Hi {{name}}, check your loan eligibility with Neercred."></textarea>
-    </label>
-    <button id="smsSaveTemplate">+ Save SMS Template</button>
-    <p id="smsTemplateMsg" class="msg"></p>
-    <div id="smsTemplateList" class="list"></div>
 
-    <h3>🚀 Send SMS Campaign</h3>
-    <label>Template <select id="smsCampaignTemplate"></select></label>
-    <button id="smsStartCampaign">Start Sending</button>
-    <button id="smsStopCampaign" disabled>Stop</button>
-    <div id="smsCampaignStatus" class="msg"></div>
-    <div id="smsCampaignLogs" class="list"></div>
+    <article class="card">
+      <h3>SMS contacts</h3>
+      <label>Paste raw data with phone numbers
+        <textarea id="smsRawData" rows="5" placeholder="9876543210, +919876543211, ..."></textarea>
+      </label>
+      <button type="button" id="smsExtractBtn" class="btn-primary">Extract phone numbers</button>
+      <p id="smsExtractMsg" class="msg"></p>
+      <div id="smsContactList" class="list"></div>
+    </article>
+
+    <article class="card">
+      <h3>SMS templates</h3>
+      <div class="grid">
+        <label>Template name <input id="smsTplName" placeholder="Loan Promo SMS" /></label>
+        <label>Apply link <input id="smsTplCtaUrl" value="https://neercred.com/apply" /></label>
+      </div>
+      <label>Message (use {{name}}, ~160 chars = 1 segment)
+        <textarea id="smsTplBody" rows="4" placeholder="Hi {{name}}, check your loan eligibility with Neercred."></textarea>
+      </label>
+      <button type="button" id="smsSaveTemplate" class="btn-primary">Save SMS template</button>
+      <p id="smsTemplateMsg" class="msg"></p>
+      <div id="smsTemplateList" class="list"></div>
+    </article>
+
+    <article class="card">
+      <h3>Send SMS campaign</h3>
+      <label>Template <select id="smsCampaignTemplate"></select></label>
+      <div class="btn-row">
+        <button type="button" id="smsStartCampaign" class="btn-primary">Start sending</button>
+        <button type="button" id="smsStopCampaign" class="btn-danger" disabled>Stop</button>
+      </div>
+      <div id="smsVisualizer" class="visualizer idle compact">
+        <p class="viz-kicker" id="smsVizKicker">Waiting</p>
+        <div class="viz-bar"><div id="smsVizBarFill" class="viz-bar-fill"></div></div>
+        <div id="smsCampaignStatus" class="msg viz-status">No SMS campaign running.</div>
+      </div>
+      <div id="smsCampaignLogs" class="list"></div>
+    </article>
   </section>
 </main>
+
+<div id="toastStack" class="toast-stack" aria-live="polite"></div>
+
+<div id="processOverlay" class="overlay" hidden>
+  <div class="overlay-card">
+    <div class="orbit" aria-hidden="true"></div>
+    <h3 id="processTitle">Working…</h3>
+    <p id="processDetail">Please wait</p>
+    <ol id="processSteps" class="process-steps"></ol>
+  </div>
+</div>
 
 <script src="app.js"></script>
 </body>

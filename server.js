@@ -73,7 +73,17 @@ app.get('/api/settings', (req, res) => {
 });
 
 app.post('/api/settings', (req, res) => {
-  const merged = { ...db.get('settings').value(), ...req.body };
+  const current = db.get('settings').value();
+  const body = req.body || {};
+  const allowed = [
+    'smtp', 'smtpStatus', 'anthropicApiKey', 'apiKeys', 'aiPersonalizeEmails',
+    'delayMinSec', 'delayMaxSec', 'dailyLimit', 'sms', 'smsStatus', 'apiBudget'
+  ];
+  const patch = {};
+  allowed.forEach((key) => {
+    if (body[key] !== undefined) patch[key] = body[key];
+  });
+  const merged = { ...current, ...patch };
   // Keep anthropicApiKey (used internally by extraction/personalization) in sync with
   // whatever key is labeled "Anthropic" in the multi-key list, so the rest of the app
   // doesn't need to know about the apiKeys array.
@@ -360,6 +370,7 @@ async function runEmailCampaignLoop(campaign, contacts, template, baseUrl) {
     const state = runningCampaigns.get(campaign.id);
     if (!state || state.stop) {
       db.get('campaigns').find({ id: campaign.id }).assign({ status: 'stopped' }).write();
+      runningCampaigns.delete(campaign.id);
       return;
     }
     const currentSuppression = new Set(db.get('suppression').value());
@@ -465,7 +476,11 @@ app.post('/api/campaign/start', (req, res) => {
 
   if (!isFuture) {
     runningCampaigns.set(campaign.id, { stop: false });
-    runEmailCampaignLoop(campaign, contacts, template, baseUrl);
+    runEmailCampaignLoop(campaign, contacts, template, baseUrl).catch((err) => {
+      console.error('Email campaign crashed:', err);
+      db.get('campaigns').find({ id: campaign.id }).assign({ status: 'failed', error: err.message }).write();
+      runningCampaigns.delete(campaign.id);
+    });
   }
 
   res.json(campaign);
@@ -485,7 +500,11 @@ setInterval(() => {
     const readyContacts = contacts.filter((c) => c.status === 'active' && !suppression.has(c.email));
     db.get('campaigns').find({ id: campaign.id }).assign({ status: 'running', total: readyContacts.length }).write();
     runningCampaigns.set(campaign.id, { stop: false });
-    runEmailCampaignLoop(campaign, readyContacts, template, campaign.baseUrl);
+    runEmailCampaignLoop(campaign, readyContacts, template, campaign.baseUrl).catch((err) => {
+      console.error('Scheduled email campaign crashed:', err);
+      db.get('campaigns').find({ id: campaign.id }).assign({ status: 'failed', error: err.message }).write();
+      runningCampaigns.delete(campaign.id);
+    });
   });
 }, 30000);
 
@@ -600,6 +619,7 @@ async function runSmsCampaignLoop(campaign, contacts, template) {
     const state = runningCampaigns.get(campaign.id);
     if (!state || state.stop) {
       db.get('smsCampaigns').find({ id: campaign.id }).assign({ status: 'stopped' }).write();
+      runningCampaigns.delete(campaign.id);
       return;
     }
     const currentSuppression = new Set(db.get('smsSuppression').value());
@@ -651,7 +671,11 @@ app.post('/api/sms/campaign/start', (req, res) => {
   const campaign = { id: uuid(), templateId, status: 'running', total: contacts.length, sent: 0, failed: 0, skipped: 0, createdAt: Date.now() };
   db.get('smsCampaigns').push(campaign).write();
   runningCampaigns.set(campaign.id, { stop: false });
-  runSmsCampaignLoop(campaign, contacts, template);
+  runSmsCampaignLoop(campaign, contacts, template).catch((err) => {
+    console.error('SMS campaign crashed:', err);
+    db.get('smsCampaigns').find({ id: campaign.id }).assign({ status: 'failed', error: err.message }).write();
+    runningCampaigns.delete(campaign.id);
+  });
 
   res.json(campaign);
 });
