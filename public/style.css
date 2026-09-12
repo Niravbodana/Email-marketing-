@@ -444,14 +444,18 @@ button:disabled { background: #cbbba6; cursor: not-allowed; transform: none; box
 .detected-list { max-height: 320px; }
 .detected-list .list-row.detected-row,
 label.detected-row {
+  display: flex;
+  flex-direction: row;
   justify-content: flex-start;
+  align-items: center;
   text-align: left;
   gap: 10px;
+  margin-bottom: 0;
+  font-weight: 600;
 }
-.detected-row { display: flex; align-items: center; gap: 10px; }
 .detected-row input { width: 16px; height: 16px; margin: 0; flex: none; }
 .detected-num { color: var(--muted); font-size: 12px; min-width: 2.2em; flex: none; }
-.detected-row > span:last-child { flex: 1; min-width: 0; }
+.detected-row > span:last-child { flex: 1; min-width: 0; font-weight: 500; }
 
 .personal-send-bar {
   background: #fff4e6;
