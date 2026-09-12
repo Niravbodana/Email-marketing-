@@ -65,7 +65,9 @@
   </section>
 
   <section id="tab-settings" class="panel">
-    <h2>SMTP &amp; Sending Settings</h2>
+    <h2>⚙️ Settings</h2>
+
+    <h3>✉️ Mail Connection <span id="smtpStatusDot" class="status-dot neutral"></span> <span id="smtpStatusText" class="status-text">Not tested yet</span></h3>
     <div class="grid">
       <label>SMTP Host <input id="smtpHost" placeholder="smtp.gmail.com" /></label>
       <label>SMTP Port <input id="smtpPort" placeholder="587" /></label>
@@ -74,25 +76,35 @@
       <label>SMTP Password / App Password <input id="smtpPass" type="password" /></label>
       <label>From Name <input id="fromName" placeholder="Neercred" /></label>
       <label>From Email <input id="fromEmail" placeholder="you@neercred.com" /></label>
-      <label>Anthropic API Key (for extraction + AI personalization) <input id="anthropicKey" type="password" placeholder="sk-ant-..." /></label>
+    </div>
+    <button id="testSmtpBtn">🔌 Test Connection</button>
+    <p id="smtpTestMsg" class="msg"></p>
+
+    <h3 style="margin-top:28px">🔑 API Keys</h3>
+    <p class="hint">Default me Anthropic key hai (email extraction aur AI personalization ke liye use hoti hai). Chaho to "+ Add API Key" se aur keys bhi add kar sakte ho (future providers ke liye) — har ek ke saamne green/red status dikhega.</p>
+    <div id="apiKeyList"></div>
+    <button id="addApiKeyBtn">+ Add API Key</button>
+
+    <h3 style="margin-top:28px">📨 Sending Behaviour</h3>
+    <div class="grid">
       <label>Delay between emails: min sec <input id="delayMin" placeholder="8" /></label>
       <label>Delay between emails: max sec <input id="delayMax" placeholder="20" /></label>
       <label>Max emails per campaign run <input id="dailyLimit" placeholder="300" /></label>
     </div>
-
     <label class="checkbox-row">
       <input type="checkbox" id="aiPersonalize" />
       <span>🤖 AI se har email ko individually rewrite karke bhejo (recommended — sab ko ek jaisi bulk mail nahi jaati, har ek personally likha hua lagta hai)</span>
     </label>
-    <p class="hint">Kaise kaam karta hai: har contact ke liye Claude (Anthropic API) template ka wording thoda alag rewrite karta hai — offer, image, link, unsubscribe sab same rehta hai, sirf tone/sentence structure har mail me thoda unique ho jaata hai. Isse "bulk blast" jaisa pattern nahi banta, real personal email jaisa feel aata hai. API key zaroori hai upar.</p>
+    <p class="hint">Kaise kaam karta hai: har contact ke liye Claude (Anthropic API) template ka wording thoda alag rewrite karta hai — offer, image, link, unsubscribe sab same rehta hai, sirf tone/sentence structure har mail me thoda unique ho jaata hai. Anthropic API key upar zaroori hai.</p>
 
-    <button id="saveSettings">Save Settings</button>
+    <button id="saveSettings">💾 Save Settings</button>
     <p class="hint">Tip: Gmail/Outlook block bulk sending fast. For real bulk marketing, use a transactional ESP (SendGrid / Amazon SES / Mailgun / Brevo) SMTP credentials here for far better deliverability, and always set up SPF, DKIM and DMARC on your sending domain.</p>
     <p id="settingsMsg" class="msg"></p>
   </section>
 
   <section id="tab-templates" class="panel">
-    <h2>Templates</h2>
+    <h2>✉️ Templates</h2>
+    <p class="hint">Multiple templates bana ke alag-alag bhejo — Dashboard/Templates list me har template ke sent count aur website click-through dikhega, jisse pata chalega konsa template zyada lead la raha hai.</p>
     <div class="grid">
       <label>Template Name <input id="tplName" placeholder="Loan Promo - Sept" /></label>
       <label>Subject <input id="tplSubject" placeholder="Get instant loan approval with Neercred" /></label>
@@ -102,10 +114,10 @@
       <textarea id="tplHtml" rows="10" placeholder="&lt;h2&gt;Hi {{name}},&lt;/h2&gt;&lt;p&gt;Your content...&lt;/p&gt;&lt;img src='https://neercred.com/assets/promo.jpg' style='max-width:100%'/&gt;"></textarea>
     </label>
     <button id="checkWordsBtn">🔍 Check for Spam Words</button>
-    <button id="saveTemplate">Save Template</button>
+    <button id="saveTemplate">+ Save as New Template</button>
     <div id="spamWordsResult"></div>
     <p id="templateMsg" class="msg"></p>
-    <h3>Saved Templates</h3>
+    <h3>Saved Templates <span style="font-weight:400;font-size:13px;color:#6b7280">(📧 sent · 🖱️ website clicks)</span></h3>
     <div id="templateList" class="list"></div>
   </section>
 

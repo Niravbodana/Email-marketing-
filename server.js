@@ -2,11 +2,13 @@ const express = require('express');
 const path = require('path');
 const { v4: uuid } = require('uuid');
 const db = require('./db');
-const { sendOne, fillPlaceholders } = require('./lib/mailer');
+const { sendOne, fillPlaceholders, testSmtpConnection } = require('./lib/mailer');
 const { extractEmails } = require('./lib/extractEmails');
 const { isValidFormat, isDisposable, isHardBounce } = require('./lib/validateEmail');
 const { computeSendingHealth, findSpamWordsInText } = require('./lib/health');
 const { personalizeEmail } = require('./lib/personalize');
+const { testApiKey } = require('./lib/apiKeyCheck');
+const { addTrackingToLinks } = require('./lib/tracking');
 
 const app = express();
 app.use(express.json({ limit: '5mb' }));
@@ -21,8 +23,39 @@ app.get('/api/settings', (req, res) => {
 });
 
 app.post('/api/settings', (req, res) => {
-  db.set('settings', { ...db.get('settings').value(), ...req.body }).write();
+  const merged = { ...db.get('settings').value(), ...req.body };
+  // Keep anthropicApiKey (used internally by extraction/personalization) in sync with
+  // whatever key is labeled "Anthropic" in the multi-key list, so the rest of the app
+  // doesn't need to know about the apiKeys array.
+  if (Array.isArray(merged.apiKeys)) {
+    const anthropicEntry = merged.apiKeys.find((k) => (k.name || '').trim().toLowerCase() === 'anthropic');
+    if (anthropicEntry) merged.anthropicApiKey = anthropicEntry.key || '';
+  }
+  db.set('settings', merged).write();
   res.json(db.get('settings').value());
+});
+
+app.post('/api/settings/test-smtp', async (req, res) => {
+  const smtp = req.body.smtp || db.get('settings').value().smtp;
+  const result = await testSmtpConnection(smtp);
+  db.get('settings').set('smtpStatus', { ...result, checkedAt: Date.now() }).write();
+  res.json(result);
+});
+
+app.post('/api/settings/test-api-key', async (req, res) => {
+  const { id, name, key } = req.body;
+  const result = await testApiKey(name, key);
+  if (id) {
+    const apiKeys = db.get('settings.apiKeys').value() || [];
+    const idx = apiKeys.findIndex((k) => k.id === id);
+    if (idx !== -1) {
+      db.get('settings.apiKeys')
+        .find({ id })
+        .assign({ status: { ...result, checkedAt: Date.now() } })
+        .write();
+    }
+  }
+  res.json(result);
 });
 
 // ---------- Templates ----------
@@ -49,6 +82,27 @@ app.post('/api/templates/check-words', (req, res) => {
   const { subject, html } = req.body;
   const matches = findSpamWordsInText(`${subject || ''} ${html || ''}`);
   res.json({ matches });
+});
+
+// Per-template stats: how many were sent under this template, and how many of those
+// recipients actually clicked through to the website — the closest proxy we have for
+// "which template brings leads" without a direct integration into neercred.com itself.
+app.get('/api/templates/:id/stats', (req, res) => {
+  const templateId = req.params.id;
+  const sent = db.get('logs').filter({ templateId, status: 'sent' }).value().length;
+  const clickRows = db.get('clicks').filter({ templateId }).value();
+  const uniqueClickers = new Set(clickRows.map((c) => c.email)).size;
+  const ctr = sent ? Math.round((uniqueClickers / sent) * 1000) / 10 : 0;
+  res.json({ sent, clicks: clickRows.length, uniqueClickers, ctr });
+});
+
+// ---------- Link click tracking ----------
+app.get('/api/track/click', (req, res) => {
+  const { tid, e, u } = req.query;
+  const url = u || '';
+  if (!/^https?:\/\//i.test(url)) return res.status(400).send('Invalid link');
+  db.get('clicks').push({ id: uuid(), templateId: tid || null, email: e || null, url, clickedAt: Date.now() }).write();
+  res.redirect(302, url);
 });
 
 // ---------- Contacts ----------
@@ -185,7 +239,8 @@ app.post('/api/campaign/start', (req, res) => {
   db.get('campaigns').push(campaign).write();
   runningCampaigns.set(campaign.id, { stop: false });
 
-  const unsubscribeBaseUrl = `${req.protocol}://${req.get('host')}/api/unsubscribe`;
+  const baseUrl = `${req.protocol}://${req.get('host')}`;
+  const unsubscribeBaseUrl = `${baseUrl}/api/unsubscribe`;
 
   (async () => {
     for (const contact of contacts) {
@@ -199,7 +254,7 @@ app.post('/api/campaign/start', (req, res) => {
         db.get('campaigns').find({ id: campaign.id }).update('skipped', (n) => n + 1).write();
         continue;
       }
-      let logEntry = { id: uuid(), campaignId: campaign.id, email: contact.email, status: 'sent', error: null, sentAt: Date.now(), aiPersonalized: false };
+      let logEntry = { id: uuid(), campaignId: campaign.id, templateId, email: contact.email, status: 'sent', error: null, sentAt: Date.now(), aiPersonalized: false };
       try {
         let subject = fillPlaceholders(template.subject, contact);
         let html = fillPlaceholders(template.html, contact);
@@ -214,6 +269,8 @@ app.post('/api/campaign/start', (req, res) => {
             console.error(`AI personalize failed for ${contact.email}, sending plain version:`, aiErr.message);
           }
         }
+
+        html = addTrackingToLinks(html, { baseUrl, templateId, email: contact.email });
 
         await sendOne({
           smtp: settings.smtp,

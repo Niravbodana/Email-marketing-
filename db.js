@@ -12,7 +12,9 @@ const db = low(adapter);
 db.defaults({
   settings: {
     smtp: { host: '', port: 587, secure: false, user: '', pass: '', fromName: '', fromEmail: '' },
+    smtpStatus: { ok: null, message: '', checkedAt: null },
     anthropicApiKey: '',
+    apiKeys: [{ id: 'default-anthropic', name: 'Anthropic', key: '', status: { ok: null, message: '', checkedAt: null } }],
     aiPersonalizeEmails: false,
     delayMinSec: 8,
     delayMaxSec: 20,
@@ -22,7 +24,8 @@ db.defaults({
   contacts: [],
   suppression: [],
   campaigns: [],
-  logs: []
+  logs: [],
+  clicks: []
 }).write();
 
 module.exports = db;
