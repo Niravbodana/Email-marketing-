@@ -687,6 +687,51 @@ button:disabled { background: #cbbba6; cursor: not-allowed; transform: none; box
 
 .sticky-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin: 8px 0; }
 
+.image-dropzone {
+  border: 1.5px dashed var(--line);
+  border-radius: 12px;
+  padding: 12px;
+  background: var(--paper-2);
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+.image-dropzone.drag-over {
+  border-color: var(--terracotta);
+  background: #fff4e6;
+}
+.image-drop-hint {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  color: var(--ink-soft);
+  margin-bottom: 10px;
+}
+.image-drop-hint button { margin: 0; }
+.image-preview-wrap {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 10px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--line);
+}
+.image-preview-wrap img {
+  max-width: 140px;
+  max-height: 90px;
+  border-radius: 8px;
+  object-fit: cover;
+  border: 1px solid var(--line);
+}
+.image-preview-wrap button { margin: 0; }
+#imageDropZone #tplImage { margin: 0; }
+
+textarea.drag-over {
+  border-color: var(--terracotta);
+  box-shadow: 0 0 0 4px rgba(196, 92, 38, 0.12);
+  background: #fff4e6;
+}
+
 .send-stage { overflow: hidden; }
 .visualizer {
   position: relative;

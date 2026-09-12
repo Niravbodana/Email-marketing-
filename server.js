@@ -1,5 +1,6 @@
 const express = require('express');
 const path = require('path');
+const fs = require('fs');
 const { v4: uuid } = require('uuid');
 const db = require('./db');
 const { sendOne, fillPlaceholders, testSmtpConnection } = require('./lib/mailer');
@@ -14,9 +15,34 @@ const { sendSms, testSmsProvider } = require('./lib/smsSender');
 const { extractPhones } = require('./lib/extractPhones');
 
 const app = express();
-app.use(express.json({ limit: '5mb' }));
+app.use(express.json({ limit: '15mb' }));
 app.use(express.urlencoded({ extended: true }));
 app.use(express.static(path.join(__dirname, 'public')));
+
+const UPLOADS_DIR = path.join(__dirname, 'public', 'uploads');
+if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+
+const IMAGE_DATA_URL_REGEX = /^data:image\/(png|jpe?g|gif|webp);base64,([a-zA-Z0-9+/=]+)$/;
+const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
+
+// Accepts a pasted/dropped/attached image as a base64 data URL and saves it as a real
+// file under public/uploads, so the template can reference it by a normal URL — the
+// same way as any other hosted image link.
+app.post('/api/uploads/image', (req, res) => {
+  const { dataUrl } = req.body || {};
+  const match = typeof dataUrl === 'string' && dataUrl.match(IMAGE_DATA_URL_REGEX);
+  if (!match) {
+    return res.status(400).json({ error: 'Please attach a PNG, JPG, GIF or WEBP image.' });
+  }
+  const ext = match[1] === 'jpeg' ? 'jpg' : match[1];
+  const buffer = Buffer.from(match[2], 'base64');
+  if (buffer.length > MAX_IMAGE_BYTES) {
+    return res.status(400).json({ error: 'Image is too large — max 8MB.' });
+  }
+  const filename = `${uuid()}.${ext}`;
+  fs.writeFileSync(path.join(UPLOADS_DIR, filename), buffer);
+  res.json({ url: `/uploads/${filename}` });
+});
 
 const PORT = process.env.PORT || 4000;
 const runningCampaigns = new Map(); // campaignId -> { stop: boolean }
@@ -137,6 +163,11 @@ function buildCtaButtonHtml(ctaText, ctaUrl) {
 </div>`;
 }
 
+function buildImageHtml(imageUrl) {
+  if (!imageUrl) return '';
+  return `<img src="${imageUrl}" alt="" style="max-width:100%;border-radius:8px;margin:0 0 16px" />`;
+}
+
 app.post('/api/templates', (req, res) => {
   const { name, subject, html, imageUrl, ctaText, ctaUrl } = req.body;
   if (!name || !subject || !html) {
@@ -145,7 +176,12 @@ app.post('/api/templates', (req, res) => {
   if (ctaUrl && !/^https?:\/\//i.test(ctaUrl)) {
     return res.status(400).json({ error: 'Button link http:// ya https:// se shuru honi chahiye.' });
   }
-  const fullHtml = html + buildCtaButtonHtml(ctaText, ctaUrl);
+  if (imageUrl && !/^https?:\/\//i.test(imageUrl)) {
+    return res.status(400).json({ error: 'Image URL http:// ya https:// se shuru honi chahiye.' });
+  }
+  // The image (if any) goes first, exactly like the live preview builds it, so what you
+  // see while writing is what actually gets sent.
+  const fullHtml = buildImageHtml(imageUrl) + html + buildCtaButtonHtml(ctaText, ctaUrl);
   const template = {
     id: uuid(),
     name,

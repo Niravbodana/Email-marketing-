@@ -14,7 +14,7 @@ Open http://localhost:4000
 ## Using it
 
 1. **Settings tab** — enter your SMTP credentials (host/port/user/app-password), from name/email, optional Anthropic API key, and sending pace (delay between emails, max emails per run).
-2. **Templates tab** — create a subject + HTML body. Use `{{name}}` and `{{email}}` as placeholders. Reference an image by URL (host it on neercred.com or any CDN — don't inline huge base64 images, that hurts deliverability).
+2. **Templates tab** — create a subject + HTML body. Use `{{name}}` and `{{email}}` as placeholders. Add an image by dragging a file onto the image box, clicking "Attach file", pasting one straight from your clipboard (Ctrl/Cmd+V), or typing/pasting an image URL — whichever's easiest. Uploaded images are saved under `public/uploads/` and served by this app, so for a real send this app needs to be reachable from the internet (not just localhost) so recipients' inboxes can load it — otherwise host the image on neercred.com or any CDN and paste that URL instead.
 3. **Contacts tab** — paste your raw bulk data (CSV, copy-pasted text, anything). It extracts email addresses (using Claude if an API key is set, otherwise a regex fallback) and adds them to your contact list, skipping anyone already unsubscribed.
 4. **Send Campaign tab** — pick a template and start. Emails go out one at a time with a random delay (configured in Settings) to avoid burst-sending. Every email includes a working unsubscribe link and a `List-Unsubscribe` header.
 

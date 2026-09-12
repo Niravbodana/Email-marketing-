@@ -377,6 +377,97 @@ function refreshPreview() {
   if (el) el.addEventListener('input', refreshPreview);
 });
 
+// ---------- Template image: attach file, drag & drop, paste ----------
+const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
+
+function showImagePreview(url) {
+  const wrap = $('imagePreviewWrap');
+  const img = $('imagePreviewImg');
+  if (!wrap || !img) return;
+  if (url) {
+    img.src = url;
+    wrap.hidden = false;
+  } else {
+    img.src = '';
+    wrap.hidden = true;
+  }
+}
+
+function fileToDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(new Error('Could not read that file.'));
+    reader.readAsDataURL(file);
+  });
+}
+
+async function handleImageFile(file) {
+  if (!file) return;
+  if (!file.type.startsWith('image/')) {
+    toast('Please choose an image file (PNG, JPG, GIF or WEBP)', 'error');
+    return;
+  }
+  if (file.size > MAX_IMAGE_BYTES) {
+    toast('Image is too large — max 8MB', 'error');
+    return;
+  }
+  try {
+    setLive('Uploading image…', 'busy');
+    const dataUrl = await fileToDataUrl(file);
+    const result = await api('/api/uploads/image', { method: 'POST', body: JSON.stringify({ dataUrl }) });
+    const fullUrl = `${window.location.origin}${result.url}`;
+    $('tplImage').value = fullUrl;
+    showImagePreview(fullUrl);
+    refreshPreview();
+    toast('Image attached');
+    setLive('Ready', 'good');
+  } catch (e) {
+    toast(e.message, 'error');
+    setLive('Ready');
+  }
+}
+
+$('attachImageBtn')?.addEventListener('click', () => $('tplImageFile').click());
+$('tplImageFile')?.addEventListener('change', (e) => handleImageFile(e.target.files[0]));
+$('removeImageBtn')?.addEventListener('click', () => {
+  $('tplImage').value = '';
+  showImagePreview(null);
+  refreshPreview();
+});
+$('tplImage')?.addEventListener('input', (e) => {
+  // Manually typed/pasted URL text also drives the small preview, when it looks like one.
+  const val = e.target.value.trim();
+  showImagePreview(/^https?:\/\//i.test(val) ? val : null);
+});
+
+const imageDropZone = $('imageDropZone');
+if (imageDropZone) {
+  ['dragover', 'dragenter'].forEach((evt) => imageDropZone.addEventListener(evt, (e) => {
+    e.preventDefault();
+    imageDropZone.classList.add('drag-over');
+  }));
+  ['dragleave', 'drop'].forEach((evt) => imageDropZone.addEventListener(evt, () => {
+    imageDropZone.classList.remove('drag-over');
+  }));
+  imageDropZone.addEventListener('drop', (e) => {
+    e.preventDefault();
+    const file = e.dataTransfer?.files?.[0];
+    if (file) handleImageFile(file);
+  });
+}
+
+// Paste an image anywhere while the Write tab is open (Ctrl/Cmd+V) — a plain text/URL
+// paste is left alone so it still works normally in every input.
+document.addEventListener('paste', (e) => {
+  if (!document.getElementById('tab-templates')?.classList.contains('active')) return;
+  const item = [...(e.clipboardData?.items || [])].find((it) => it.type.startsWith('image/'));
+  if (item) {
+    e.preventDefault();
+    handleImageFile(item.getAsFile());
+  }
+});
+
 async function loadTemplates() {
   const templates = await api('/api/templates');
   $('templateList').innerHTML = templates.map((t) => `
@@ -462,6 +553,7 @@ $('saveTemplate').addEventListener('click', async () => {
     $('tplSubject').value = '';
     $('tplHtml').value = '';
     $('tplImage').value = '';
+    showImagePreview(null);
     $('tplCtaText').value = 'Check Your Eligibility';
     $('tplCtaUrl').value = 'https://neercred.com/apply';
     $('spamWordsResult').innerHTML = '';
@@ -560,6 +652,51 @@ async function updateCampaignReady() {
   const el = $(id);
   if (el) el.addEventListener('change', updateCampaignReady);
 });
+
+function fileToText(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(new Error('Could not read that file.'));
+    reader.readAsText(file);
+  });
+}
+
+async function handleContactsFile(file) {
+  if (!file) return;
+  const looksTextLike = file.type.startsWith('text/') || /\.(csv|txt)$/i.test(file.name);
+  if (!looksTextLike) {
+    toast('Please attach a .csv or .txt file', 'error');
+    return;
+  }
+  try {
+    const text = await fileToText(file);
+    const box = $('rawData');
+    box.value = box.value ? `${box.value}\n${text}` : text;
+    setMsg('contactsFileMsg', `Loaded ${file.name} (${text.split(/\r?\n/).length} line(s)) — click "Extract emails" to add them.`);
+  } catch (e) {
+    toast(e.message, 'error');
+  }
+}
+
+$('attachContactsFileBtn')?.addEventListener('click', () => $('rawDataFile').click());
+$('rawDataFile')?.addEventListener('change', (e) => handleContactsFile(e.target.files[0]));
+
+const rawDataBox = $('rawData');
+if (rawDataBox) {
+  ['dragover', 'dragenter'].forEach((evt) => rawDataBox.addEventListener(evt, (e) => {
+    e.preventDefault();
+    rawDataBox.classList.add('drag-over');
+  }));
+  ['dragleave', 'drop'].forEach((evt) => rawDataBox.addEventListener(evt, () => {
+    rawDataBox.classList.remove('drag-over');
+  }));
+  rawDataBox.addEventListener('drop', (e) => {
+    e.preventDefault();
+    const file = e.dataTransfer?.files?.[0];
+    if (file) handleContactsFile(file);
+  });
+}
 
 $('extractBtn').addEventListener('click', async () => {
   const rawText = $('rawData').value.trim();

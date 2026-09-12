@@ -241,8 +241,22 @@
         <div class="grid">
           <label>Template name <input id="tplName" placeholder="Loan Promo - Sept" /></label>
           <label>Subject <input id="tplSubject" placeholder="A clear, calm subject line" /></label>
-          <label class="full">Image URL <input id="tplImage" placeholder="https://neercred.com/assets/promo.jpg" /></label>
         </div>
+        <label class="full">Image
+          <div id="imageDropZone" class="image-dropzone">
+            <div id="imagePreviewWrap" class="image-preview-wrap" hidden>
+              <img id="imagePreviewImg" alt="" />
+              <button type="button" id="removeImageBtn" class="btn-ghost">Remove image</button>
+            </div>
+            <div id="imageDropHint" class="image-drop-hint">
+              <span>Drag &amp; drop an image, paste (Ctrl/Cmd+V), or</span>
+              <button type="button" id="attachImageBtn" class="btn-ghost">Attach file</button>
+              <input id="tplImageFile" type="file" accept="image/png,image/jpeg,image/gif,image/webp" hidden />
+            </div>
+            <input id="tplImage" placeholder="…or paste an image URL here" />
+          </div>
+        </label>
+        <p class="hint" id="imageUploadHint">Attached images are saved on this server and linked by URL — for a real send, this app needs to be reachable from the internet (not just localhost) so recipients' inboxes can load the image.</p>
         <label>HTML body
           <textarea id="tplHtml" rows="10" placeholder="<h2>Hi {{name}},</h2><p>Your content...</p>"></textarea>
         </label>
@@ -284,9 +298,14 @@
 
     <article class="card">
       <label>Paste raw bulk data
-        <textarea id="rawData" rows="8" placeholder="CSV, notes, copy-paste — anything with emails in it"></textarea>
+        <textarea id="rawData" rows="8" placeholder="CSV, notes, copy-paste — anything with emails in it — or drag a .csv/.txt file here"></textarea>
       </label>
-      <button type="button" id="extractBtn" class="btn-primary">Extract emails</button>
+      <div class="btn-row">
+        <button type="button" id="extractBtn" class="btn-primary">Extract emails</button>
+        <button type="button" id="attachContactsFileBtn" class="btn-ghost">Attach .csv/.txt file</button>
+        <input id="rawDataFile" type="file" accept=".csv,.txt,text/csv,text/plain" hidden />
+      </div>
+      <p id="contactsFileMsg" class="msg"></p>
       <p id="extractMsg" class="msg"></p>
       <div id="extractProcess" class="mini-process" hidden></div>
     </article>
