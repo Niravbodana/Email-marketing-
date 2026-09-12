@@ -441,10 +441,17 @@ button:disabled { background: #cbbba6; cursor: not-allowed; transform: none; box
 .search-label { max-width: 360px; }
 
 .detected-box { margin-top: 18px; }
-.detected-list { max-height: 280px; }
+.detected-list { max-height: 320px; }
+.detected-list .list-row.detected-row,
+label.detected-row {
+  justify-content: flex-start;
+  text-align: left;
+  gap: 10px;
+}
 .detected-row { display: flex; align-items: center; gap: 10px; }
-.detected-row input { width: 16px; height: 16px; margin: 0; }
-.detected-num { color: var(--muted); font-size: 12px; min-width: 2.2em; }
+.detected-row input { width: 16px; height: 16px; margin: 0; flex: none; }
+.detected-num { color: var(--muted); font-size: 12px; min-width: 2.2em; flex: none; }
+.detected-row > span:last-child { flex: 1; min-width: 0; }
 
 .personal-send-bar {
   background: #fff4e6;
