@@ -134,9 +134,38 @@ $('extractBtn').addEventListener('click', async () => {
     $('extractMsg').textContent = `Found ${result.totalExtracted} email(s), added ${result.addedCount} new contact(s).`;
     $('rawData').value = '';
     loadContacts();
+    loadHealth();
   } catch (e) {
     $('extractMsg').textContent = e.message;
     $('extractMsg').className = 'msg error';
+  }
+});
+
+// ---------- List Health ----------
+async function loadHealth() {
+  const h = await api('/api/contacts/health');
+  const cards = [
+    ['active', 'Active (sendable)'],
+    ['invalid', 'Invalid'],
+    ['bounced', 'Bounced'],
+    ['suppressed', 'Suppressed']
+  ];
+  $('healthSummary').innerHTML = cards.map(([key, label]) => `
+    <div class="health-card"><span class="num">${h[key]}</span><span class="label">${label}</span></div>
+  `).join('');
+}
+
+$('healthCheckBtn').addEventListener('click', async () => {
+  $('healthMsg').textContent = 'Checking...';
+  $('healthMsg').className = 'msg';
+  try {
+    const result = await api('/api/contacts/health-check', { method: 'POST' });
+    $('healthMsg').textContent = `Checked ${result.checked} contact(s): ${result.invalidCount} invalid, ${result.duplicateCount} duplicate(s) flagged.`;
+    loadContacts();
+    loadHealth();
+  } catch (e) {
+    $('healthMsg').textContent = e.message;
+    $('healthMsg').className = 'msg error';
   }
 });
 
@@ -183,3 +212,4 @@ async function pollStatus() {
 loadSettings();
 loadTemplates();
 loadContacts();
+loadHealth();

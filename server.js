@@ -4,6 +4,7 @@ const { v4: uuid } = require('uuid');
 const db = require('./db');
 const { sendOne } = require('./lib/mailer');
 const { extractEmails } = require('./lib/extractEmails');
+const { isValidFormat, isDisposable, isHardBounce } = require('./lib/validateEmail');
 
 const app = express();
 app.use(express.json({ limit: '5mb' }));
@@ -59,8 +60,11 @@ app.post('/api/contacts/extract', async (req, res) => {
   const added = [];
   extracted.forEach(({ email, name }) => {
     if (existing.has(email)) return;
-    const suppressed = suppression.has(email);
-    const contact = { id: uuid(), email, name: name || '', status: suppressed ? 'suppressed' : 'active', addedAt: Date.now() };
+    let status = 'active';
+    if (suppression.has(email)) status = 'suppressed';
+    else if (!isValidFormat(email)) status = 'invalid';
+    else if (isDisposable(email)) status = 'invalid';
+    const contact = { id: uuid(), email, name: name || '', status, bounceCount: 0, lastBounceReason: null, addedAt: Date.now() };
     db.get('contacts').push(contact).write();
     existing.add(email);
     added.push(contact);
@@ -72,6 +76,50 @@ app.post('/api/contacts/extract', async (req, res) => {
 app.delete('/api/contacts/:id', (req, res) => {
   db.get('contacts').remove({ id: req.params.id }).write();
   res.json({ ok: true });
+});
+
+// Re-validates every contact's email format/domain and flags dupes; does not touch
+// suppressed/bounced status set by real unsubscribes or send failures.
+app.post('/api/contacts/health-check', (req, res) => {
+  const suppression = new Set(db.get('suppression').value());
+  const contacts = db.get('contacts').value();
+  const seen = new Set();
+  let invalidCount = 0;
+  let duplicateCount = 0;
+
+  contacts.forEach((c) => {
+    if (c.status === 'suppressed' || c.status === 'bounced') return;
+    const key = c.email.toLowerCase();
+    if (seen.has(key)) {
+      db.get('contacts').find({ id: c.id }).assign({ status: 'invalid', lastBounceReason: 'duplicate' }).write();
+      duplicateCount += 1;
+      return;
+    }
+    seen.add(key);
+    if (suppression.has(key)) {
+      db.get('contacts').find({ id: c.id }).assign({ status: 'suppressed' }).write();
+      return;
+    }
+    if (!isValidFormat(c.email) || isDisposable(c.email)) {
+      db.get('contacts').find({ id: c.id }).assign({ status: 'invalid', lastBounceReason: 'bad_format_or_disposable' }).write();
+      invalidCount += 1;
+      return;
+    }
+    if (c.status === 'invalid') {
+      db.get('contacts').find({ id: c.id }).assign({ status: 'active' }).write();
+    }
+  });
+
+  res.json({ checked: contacts.length, invalidCount, duplicateCount });
+});
+
+app.get('/api/contacts/health', (req, res) => {
+  const contacts = db.get('contacts').value();
+  const summary = { total: contacts.length, active: 0, invalid: 0, bounced: 0, suppressed: 0 };
+  contacts.forEach((c) => {
+    if (summary[c.status] !== undefined) summary[c.status] += 1;
+  });
+  res.json(summary);
 });
 
 // ---------- Suppression / Unsubscribe ----------
@@ -111,7 +159,7 @@ app.post('/api/campaign/start', (req, res) => {
     const idSet = new Set(contactIds);
     contacts = contacts.filter((c) => idSet.has(c.id));
   }
-  contacts = contacts.filter((c) => c.status !== 'suppressed' && !suppression.has(c.email));
+  contacts = contacts.filter((c) => c.status === 'active' && !suppression.has(c.email));
 
   const dailyLimit = Number(settings.dailyLimit) || 300;
   contacts = contacts.slice(0, dailyLimit);
@@ -158,6 +206,16 @@ app.post('/api/campaign/start', (req, res) => {
         logEntry.status = 'failed';
         logEntry.error = err.message;
         db.get('campaigns').find({ id: campaign.id }).update('failed', (n) => n + 1).write();
+
+        const bounceCount = (contact.bounceCount || 0) + 1;
+        if (isHardBounce(err)) {
+          db.get('contacts').find({ id: contact.id }).assign({ status: 'bounced', bounceCount, lastBounceReason: err.message }).write();
+          if (!db.get('suppression').value().includes(contact.email)) {
+            db.get('suppression').push(contact.email).write();
+          }
+        } else {
+          db.get('contacts').find({ id: contact.id }).assign({ bounceCount, lastBounceReason: err.message }).write();
+        }
       }
       db.get('logs').push(logEntry).write();
       await new Promise((r) => setTimeout(r, randomDelayMs(settings.delayMinSec, settings.delayMaxSec)));

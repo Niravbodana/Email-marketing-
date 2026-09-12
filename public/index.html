@@ -61,6 +61,13 @@
     </label>
     <button id="extractBtn">Extract Emails</button>
     <p id="extractMsg" class="msg"></p>
+
+    <h3>List Health</h3>
+    <div id="healthSummary" class="health-grid"></div>
+    <button id="healthCheckBtn">Run List Health Check</button>
+    <p id="healthMsg" class="msg"></p>
+    <p class="hint">Invalid (bad format / disposable / duplicate) and bounced contacts are automatically excluded from sends. Bounced = a real send attempt failed permanently (e.g. "no such user") and that address is now suppressed for good.</p>
+
     <h3>Contact List (<span id="contactCount">0</span>)</h3>
     <div id="contactList" class="list"></div>
   </section>
