@@ -179,7 +179,7 @@ $('checkWordsBtn').addEventListener('click', async () => {
   try {
     const result = await api('/api/templates/check-words', {
       method: 'POST',
-      body: JSON.stringify({ subject: $('tplSubject').value, html: $('tplHtml').value })
+      body: JSON.stringify({ subject: $('tplSubject').value, html: `${$('tplHtml').value} ${$('tplCtaText').value}` })
     });
     if (!result.matches.length) {
       $('spamWordsResult').innerHTML = '<p class="msg">✅ Koi risky/spammy word nahi mila.</p>';
@@ -208,7 +208,9 @@ $('saveTemplate').addEventListener('click', async () => {
         name: $('tplName').value,
         subject: $('tplSubject').value,
         html: $('tplHtml').value,
-        imageUrl: $('tplImage').value
+        imageUrl: $('tplImage').value,
+        ctaText: $('tplCtaText').value,
+        ctaUrl: $('tplCtaUrl').value
       })
     });
     $('templateMsg').textContent = 'Template saved.';
@@ -217,6 +219,8 @@ $('saveTemplate').addEventListener('click', async () => {
     $('tplSubject').value = '';
     $('tplHtml').value = '';
     $('tplImage').value = '';
+    $('tplCtaText').value = '';
+    $('tplCtaUrl').value = '';
     $('spamWordsResult').innerHTML = '';
     loadTemplates();
   } catch (e) {

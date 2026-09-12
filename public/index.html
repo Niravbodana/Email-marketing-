@@ -113,6 +113,15 @@
     <label>HTML Body (use {{name}} and {{email}} as placeholders)
       <textarea id="tplHtml" rows="10" placeholder="&lt;h2&gt;Hi {{name}},&lt;/h2&gt;&lt;p&gt;Your content...&lt;/p&gt;&lt;img src='https://neercred.com/assets/promo.jpg' style='max-width:100%'/&gt;"></textarea>
     </label>
+
+    <h3>🔘 Apply Button (optional)</h3>
+    <p class="hint">Yeh ek bada, clickable button email ke end me add kar dega jo seedha diye gaye link (jaise neercred.com/apply) pe le jaata hai. Yeh link automatically track hoti hai — Templates list me dikh jayega kitno ne click kiya.</p>
+    <div class="grid">
+      <label>Button Text <input id="tplCtaText" placeholder="Check Your Eligibility" /></label>
+      <label>Button Link <input id="tplCtaUrl" placeholder="https://neercred.com/apply" /></label>
+    </div>
+    <p class="hint">⚠️ Note: "Click here" aur "Apply now" jaisi wording spam filters ko trigger karti hai (upar wale Spam Words checker me bhi flag hoti hai). Kuch safer options: <b>"Check Your Eligibility"</b>, <b>"View Your Offer"</b>, <b>"Start Your Application"</b>, <b>"See Your Options"</b> — link wahi neercred.com/apply rahega, sirf button text change hota hai.</p>
+
     <button id="checkWordsBtn">🔍 Check for Spam Words</button>
     <button id="saveTemplate">+ Save as New Template</button>
     <div id="spamWordsResult"></div>

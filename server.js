@@ -63,12 +63,32 @@ app.get('/api/templates', (req, res) => {
   res.json(db.get('templates').value());
 });
 
+function buildCtaButtonHtml(ctaText, ctaUrl) {
+  if (!ctaText || !ctaUrl) return '';
+  return `<div style="text-align:center;margin:28px 0">
+  <a href="${ctaUrl}" style="background:#2563eb;color:#ffffff;text-decoration:none;padding:14px 32px;border-radius:8px;font-weight:600;font-size:16px;display:inline-block">${ctaText}</a>
+</div>`;
+}
+
 app.post('/api/templates', (req, res) => {
-  const { name, subject, html, imageUrl } = req.body;
+  const { name, subject, html, imageUrl, ctaText, ctaUrl } = req.body;
   if (!name || !subject || !html) {
     return res.status(400).json({ error: 'name, subject and html are required' });
   }
-  const template = { id: uuid(), name, subject, html, imageUrl: imageUrl || '', createdAt: Date.now() };
+  if (ctaUrl && !/^https?:\/\//i.test(ctaUrl)) {
+    return res.status(400).json({ error: 'Button link http:// ya https:// se shuru honi chahiye.' });
+  }
+  const fullHtml = html + buildCtaButtonHtml(ctaText, ctaUrl);
+  const template = {
+    id: uuid(),
+    name,
+    subject,
+    html: fullHtml,
+    imageUrl: imageUrl || '',
+    ctaText: ctaText || '',
+    ctaUrl: ctaUrl || '',
+    createdAt: Date.now()
+  };
   db.get('templates').push(template).write();
   res.json(template);
 });
