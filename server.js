@@ -561,14 +561,14 @@ app.post('/api/campaign/start', (req, res) => {
   const settings = db.get('settings').value();
   const template = db.get('templates').find({ id: templateId }).value();
   if (!template) return res.status(400).json({ error: 'Template not found' });
-  if (!settings.smtp.host || !settings.smtp.user || !settings.smtp.pass) {
-    return res.status(400).json({ error: 'SMTP settings are incomplete. Configure them first.' });
-  }
 
   const dailyLimit = Number(settings.dailyLimit) || 300;
   const contacts = resolveCampaignContacts({ contactIds, tag, dailyLimit });
   if (!contacts.length) {
     return res.status(400).json({ error: 'No active people to email. Add contacts first, or pick people who are not bounced / unsubscribed.' });
+  }
+  if (!settings.smtp.host || !settings.smtp.user || !settings.smtp.pass) {
+    return res.status(400).json({ error: 'SMTP settings are incomplete. Configure them first.' });
   }
   const baseUrl = `${req.protocol}://${req.get('host')}`;
   const scheduledTime = scheduledAt ? new Date(scheduledAt).getTime() : null;
