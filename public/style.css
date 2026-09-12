@@ -30,3 +30,40 @@ button:disabled { background: #9ca3af; cursor: not-allowed; }
 .health-card { border: 1px solid #e5e7eb; border-radius: 8px; padding: 10px 12px; text-align: center; }
 .health-card .num { font-size: 20px; font-weight: 700; display: block; }
 .health-card .label { font-size: 12px; color: #6b7280; }
+
+.big-cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin: 18px 0 28px; }
+.big-card { border-radius: 12px; padding: 18px; text-align: center; border: 2px solid #e5e7eb; }
+.big-card .big-num { display: block; font-size: 32px; font-weight: 800; }
+.big-card .big-label { font-size: 13px; color: #4b5563; }
+.big-card.good { background: #ecfdf5; border-color: #a7f3d0; }
+.big-card.good .big-num { color: #059669; }
+.big-card.bad { background: #fef2f2; border-color: #fecaca; }
+.big-card.bad .big-num { color: #dc2626; }
+.big-card.warn { background: #fffbeb; border-color: #fde68a; }
+.big-card.warn .big-num { color: #d97706; }
+.big-card.pending { background: #eff6ff; border-color: #bfdbfe; }
+.big-card.pending .big-num { color: #2563eb; }
+.big-card.neutral { background: #f9fafb; border-color: #e5e7eb; }
+.big-card.neutral .big-num { color: #374151; }
+
+.meter-wrap { border: 1px solid #e5e7eb; border-radius: 12px; padding: 18px; margin-bottom: 20px; }
+.meter-score-row { display: flex; align-items: center; gap: 16px; margin-bottom: 10px; }
+.meter-score { font-size: 40px; font-weight: 800; }
+.meter-rating { font-size: 16px; font-weight: 700; padding: 6px 14px; border-radius: 20px; }
+.meter-rating.good { background: #d1fae5; color: #065f46; }
+.meter-rating.warn { background: #fef3c7; color: #92400e; }
+.meter-rating.bad { background: #fee2e2; color: #991b1b; }
+.meter-bar-track { height: 14px; border-radius: 8px; background: #e5e7eb; overflow: hidden; margin-bottom: 16px; }
+.meter-bar-fill { height: 100%; border-radius: 8px; transition: width 0.3s; }
+.meter-bar-fill.good { background: #10b981; }
+.meter-bar-fill.warn { background: #f59e0b; }
+.meter-bar-fill.bad { background: #ef4444; }
+.meter-checks { display: grid; gap: 8px; }
+.meter-check { display: flex; gap: 10px; align-items: flex-start; font-size: 13px; padding: 8px 10px; border-radius: 8px; background: #f9fafb; }
+.meter-check .icon { font-size: 16px; }
+.meter-check .txt b { display: block; margin-bottom: 2px; }
+.meter-check .txt span { color: #6b7280; }
+
+.dash-tabs { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 8px; }
+.dash-tab { background: #f3f4f6; color: #374151; border: 1px solid #e5e7eb; padding: 6px 12px; border-radius: 20px; cursor: pointer; font-size: 13px; }
+.dash-tab.active { background: #111827; color: white; border-color: #111827; }

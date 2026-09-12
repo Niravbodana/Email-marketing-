@@ -10,15 +10,61 @@
 <header>
   <h1>Neercred &mdash; Email Marketing</h1>
   <nav>
-    <button data-tab="settings" class="tab active">Settings</button>
-    <button data-tab="templates" class="tab">Templates</button>
-    <button data-tab="contacts" class="tab">Contacts</button>
-    <button data-tab="campaign" class="tab">Send Campaign</button>
+    <button data-tab="dashboard" class="tab active">📊 Dashboard</button>
+    <button data-tab="settings" class="tab">⚙️ Settings</button>
+    <button data-tab="templates" class="tab">✉️ Templates</button>
+    <button data-tab="contacts" class="tab">👥 Contacts</button>
+    <button data-tab="campaign" class="tab">🚀 Send Campaign</button>
   </nav>
 </header>
 
 <main>
-  <section id="tab-settings" class="panel active">
+  <section id="tab-dashboard" class="panel active">
+    <h2>📊 Dashboard — sab kuch ek jagah</h2>
+
+    <div class="big-cards">
+      <div class="big-card neutral">
+        <span class="big-num" id="cardTotal">0</span>
+        <span class="big-label">Total Contacts</span>
+      </div>
+      <div class="big-card pending">
+        <span class="big-num" id="cardPending">0</span>
+        <span class="big-label">⏳ Pending (bhejni baaki)</span>
+      </div>
+      <div class="big-card good">
+        <span class="big-num" id="cardSent">0</span>
+        <span class="big-label">✅ Sent (successful)</span>
+      </div>
+      <div class="big-card bad">
+        <span class="big-num" id="cardBounced">0</span>
+        <span class="big-label">📭 Bounced</span>
+      </div>
+      <div class="big-card warn">
+        <span class="big-num" id="cardInvalid">0</span>
+        <span class="big-label">⚠️ Invalid</span>
+      </div>
+      <div class="big-card neutral">
+        <span class="big-num" id="cardSuppressed">0</span>
+        <span class="big-label">🚫 Unsubscribed</span>
+      </div>
+    </div>
+
+    <h3>🩺 Sending Health Meter</h3>
+    <p class="hint">Yeh meter batata hai ki abhi email bhejna kitna safe hai — jitna jyada score, utna kam risk spam/block hone ka.</p>
+    <div id="healthMeterBox"></div>
+
+    <h3>📋 Detail Lists</h3>
+    <div class="dash-tabs">
+      <button class="dash-tab active" data-list="pending">⏳ Pending</button>
+      <button class="dash-tab" data-list="sent">✅ Sent</button>
+      <button class="dash-tab" data-list="bounced">📭 Bounced</button>
+      <button class="dash-tab" data-list="invalid">⚠️ Invalid</button>
+      <button class="dash-tab" data-list="suppressed">🚫 Unsubscribed</button>
+    </div>
+    <div id="dashListBox" class="list"></div>
+  </section>
+
+  <section id="tab-settings" class="panel">
     <h2>SMTP &amp; Sending Settings</h2>
     <div class="grid">
       <label>SMTP Host <input id="smtpHost" placeholder="smtp.gmail.com" /></label>

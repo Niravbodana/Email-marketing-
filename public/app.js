@@ -6,6 +6,7 @@ document.querySelectorAll('.tab').forEach((btn) => {
     document.querySelectorAll('.panel').forEach((p) => p.classList.remove('active'));
     btn.classList.add('active');
     $(`tab-${btn.dataset.tab}`).classList.add('active');
+    if (btn.dataset.tab === 'dashboard' && typeof loadDashboard === 'function') loadDashboard();
   });
 });
 
@@ -209,7 +210,73 @@ async function pollStatus() {
   }
 }
 
+// ---------- Dashboard ----------
+let dashData = null;
+let activeDashList = 'pending';
+
+const STATUS_ICON = { good: '✅', warn: '⚠️', bad: '❌', neutral: 'ℹ️' };
+
+function renderMeter(health) {
+  $('healthMeterBox').innerHTML = `
+    <div class="meter-wrap">
+      <div class="meter-score-row">
+        <div class="meter-score">${health.score}<span style="font-size:16px;color:#9ca3af">/100</span></div>
+        <div class="meter-rating ${health.ratingColor}">${health.rating}</div>
+      </div>
+      <div class="meter-bar-track"><div class="meter-bar-fill ${health.ratingColor}" style="width:${health.score}%"></div></div>
+      <div class="meter-checks">
+        ${health.checks.map((c) => `
+          <div class="meter-check">
+            <span class="icon">${STATUS_ICON[c.status]}</span>
+            <span class="txt"><b>${c.label}</b><span>${c.message}</span></span>
+          </div>
+        `).join('')}
+      </div>
+    </div>`;
+}
+
+function renderDashList() {
+  const items = (dashData?.lists?.[activeDashList]) || [];
+  if (!items.length) {
+    $('dashListBox').innerHTML = '<div class="list-row">Yahan kuch nahi hai.</div>';
+    return;
+  }
+  $('dashListBox').innerHTML = items.map((c) => {
+    let extra = '';
+    if (activeDashList === 'sent') extra = `sent ${new Date(c.lastSentAt).toLocaleString()}`;
+    if (activeDashList === 'bounced') extra = c.lastBounceReason || '';
+    return `<div class="list-row"><span>${c.email} ${c.name ? `(${c.name})` : ''}</span><span style="color:#6b7280;font-size:12px">${extra}</span></div>`;
+  }).join('');
+}
+
+document.querySelectorAll('.dash-tab').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.dash-tab').forEach((b) => b.classList.remove('active'));
+    btn.classList.add('active');
+    activeDashList = btn.dataset.list;
+    renderDashList();
+  });
+});
+
+async function loadDashboard() {
+  dashData = await api('/api/dashboard');
+  const c = dashData.counts;
+  $('cardTotal').textContent = c.total;
+  $('cardPending').textContent = c.pending;
+  $('cardSent').textContent = c.sent;
+  $('cardBounced').textContent = c.bounced;
+  $('cardInvalid').textContent = c.invalid;
+  $('cardSuppressed').textContent = c.suppressed;
+  renderMeter(dashData.health);
+  renderDashList();
+}
+
+setInterval(() => {
+  if (document.getElementById('tab-dashboard').classList.contains('active')) loadDashboard();
+}, 5000);
+
 loadSettings();
 loadTemplates();
 loadContacts();
 loadHealth();
+loadDashboard();

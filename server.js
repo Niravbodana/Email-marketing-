@@ -5,6 +5,7 @@ const db = require('./db');
 const { sendOne } = require('./lib/mailer');
 const { extractEmails } = require('./lib/extractEmails');
 const { isValidFormat, isDisposable, isHardBounce } = require('./lib/validateEmail');
+const { computeSendingHealth } = require('./lib/health');
 
 const app = express();
 app.use(express.json({ limit: '5mb' }));
@@ -242,6 +243,79 @@ app.get('/api/campaign/:id/status', (req, res) => {
 
 app.get('/api/campaigns', (req, res) => {
   res.json(db.get('campaigns').value().slice().reverse());
+});
+
+// ---------- Dashboard ----------
+app.get('/api/dashboard', (req, res) => {
+  const settings = db.get('settings').value();
+  const contacts = db.get('contacts').value();
+  const logs = db.get('logs').value();
+
+  const startOfToday = new Date();
+  startOfToday.setHours(0, 0, 0, 0);
+  const sentToday = logs.filter((l) => l.status === 'sent' && l.sentAt >= startOfToday.getTime()).length;
+
+  // Most recent successful send per email
+  const lastSentByEmail = new Map();
+  logs.forEach((l) => {
+    if (l.status !== 'sent') return;
+    const prev = lastSentByEmail.get(l.email);
+    if (!prev || l.sentAt > prev) lastSentByEmail.set(l.email, l.sentAt);
+  });
+
+  const activeContacts = contacts.filter((c) => c.status === 'active');
+  const bouncedContacts = contacts.filter((c) => c.status === 'bounced');
+  const invalidContacts = contacts.filter((c) => c.status === 'invalid');
+  const suppressedContacts = contacts.filter((c) => c.status === 'suppressed');
+
+  const sentContacts = [];
+  const pendingContacts = [];
+  activeContacts.forEach((c) => {
+    if (lastSentByEmail.has(c.email)) {
+      sentContacts.push({ ...c, lastSentAt: lastSentByEmail.get(c.email) });
+    } else {
+      pendingContacts.push(c);
+    }
+  });
+  // A contact can bounce after previously being counted active; also surface anyone
+  // ever successfully sent to, even if their status later changed.
+  contacts.forEach((c) => {
+    if (c.status !== 'active' && lastSentByEmail.has(c.email)) {
+      sentContacts.push({ ...c, lastSentAt: lastSentByEmail.get(c.email) });
+    }
+  });
+
+  const totalAttempted = logs.filter((l) => l.status === 'sent' || l.status === 'failed').length;
+
+  const health = computeSendingHealth({
+    settings,
+    sentToday,
+    totalAttempted,
+    bouncedCount: bouncedContacts.length,
+    suppressedCount: suppressedContacts.length,
+    totalContacts: contacts.length,
+    invalidCount: invalidContacts.length
+  });
+
+  res.json({
+    counts: {
+      total: contacts.length,
+      pending: pendingContacts.length,
+      sent: sentContacts.length,
+      bounced: bouncedContacts.length,
+      invalid: invalidContacts.length,
+      suppressed: suppressedContacts.length,
+      sentToday
+    },
+    lists: {
+      pending: pendingContacts.slice(0, 200),
+      sent: sentContacts.sort((a, b) => b.lastSentAt - a.lastSentAt).slice(0, 200),
+      bounced: bouncedContacts.slice(0, 200),
+      invalid: invalidContacts.slice(0, 200),
+      suppressed: suppressedContacts.slice(0, 200)
+    },
+    health
+  });
 });
 
 app.listen(PORT, () => {
