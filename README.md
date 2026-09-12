@@ -18,6 +18,14 @@ Open http://localhost:4000
 3. **Contacts tab** — paste your raw bulk data (CSV, copy-pasted text, anything). It extracts email addresses (using Claude if an API key is set, otherwise a regex fallback) and adds them to your contact list, skipping anyone already unsubscribed.
 4. **Send Campaign tab** — pick a template and start. Emails go out one at a time with a random delay (configured in Settings) to avoid burst-sending. Every email includes a working unsubscribe link and a `List-Unsubscribe` header.
 
+## Spam-word checker (Templates tab)
+
+Before saving a template, click "Check for Spam Words" — it scans your subject/body for phrases known to trigger spam filters (especially loan/finance wording like "guaranteed approval", "no credit check", "click here") and shows a safer alternative phrase for each one.
+
+## AI personalization (Settings tab)
+
+Turn on "AI se har email ko individually rewrite karke bhejo" and add your Anthropic API key. When enabled, each email is sent one at a time as before, but Claude lightly rewrites the wording/sentence structure for that one recipient before it goes out — same offer, same image, same links, same unsubscribe footer, just not word-for-word identical to every other recipient. This is what actually makes a "bulk" send read as individual mail instead of a template blast, and it reduces (not eliminates) the pattern-matching signals spam filters look for. If the AI call fails for a given contact (bad key, rate limit, etc.), that email still sends using the plain `{{name}}`-filled template as a fallback — nothing is skipped.
+
 ## Important — deliverability & compliance
 
 This tool is built to follow legitimate email marketing practice, not to evade spam filters:

@@ -31,6 +31,7 @@ async function loadSettings() {
   $('fromName').value = s.smtp.fromName || '';
   $('fromEmail').value = s.smtp.fromEmail || '';
   $('anthropicKey').value = s.anthropicApiKey || '';
+  $('aiPersonalize').checked = !!s.aiPersonalizeEmails;
   $('delayMin').value = s.delayMinSec ?? 8;
   $('delayMax').value = s.delayMaxSec ?? 20;
   $('dailyLimit').value = s.dailyLimit ?? 300;
@@ -51,6 +52,7 @@ $('saveSettings').addEventListener('click', async () => {
           fromEmail: $('fromEmail').value
         },
         anthropicApiKey: $('anthropicKey').value,
+        aiPersonalizeEmails: $('aiPersonalize').checked,
         delayMinSec: Number($('delayMin').value) || 8,
         delayMaxSec: Number($('delayMax').value) || 20,
         dailyLimit: Number($('dailyLimit').value) || 300
@@ -83,6 +85,31 @@ async function loadTemplates() {
   });
 }
 
+$('checkWordsBtn').addEventListener('click', async () => {
+  try {
+    const result = await api('/api/templates/check-words', {
+      method: 'POST',
+      body: JSON.stringify({ subject: $('tplSubject').value, html: $('tplHtml').value })
+    });
+    if (!result.matches.length) {
+      $('spamWordsResult').innerHTML = '<p class="msg">✅ Koi risky/spammy word nahi mila.</p>';
+      return;
+    }
+    $('spamWordsResult').innerHTML = `
+      <div class="word-suggestions">
+        ${result.matches.map((m) => `
+          <div class="word-row">
+            <span class="word-bad">"${m.phrase}"</span>
+            <span class="word-arrow">→</span>
+            <span class="word-good">${m.alternatives.map((a) => `"${a}"`).join(' or ')}</span>
+          </div>
+        `).join('')}
+      </div>`;
+  } catch (e) {
+    $('spamWordsResult').innerHTML = `<p class="msg error">${e.message}</p>`;
+  }
+});
+
 $('saveTemplate').addEventListener('click', async () => {
   try {
     await api('/api/templates', {
@@ -100,6 +127,7 @@ $('saveTemplate').addEventListener('click', async () => {
     $('tplSubject').value = '';
     $('tplHtml').value = '';
     $('tplImage').value = '';
+    $('spamWordsResult').innerHTML = '';
     loadTemplates();
   } catch (e) {
     $('templateMsg').textContent = e.message;

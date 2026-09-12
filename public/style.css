@@ -72,3 +72,12 @@ button:disabled { background: #9ca3af; cursor: not-allowed; }
 .dash-tabs { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 8px; }
 .dash-tab { background: #f3f4f6; color: #374151; border: 1px solid #e5e7eb; padding: 6px 12px; border-radius: 20px; cursor: pointer; font-size: 13px; }
 .dash-tab.active { background: #111827; color: white; border-color: #111827; }
+
+.checkbox-row { display: flex; flex-direction: row; align-items: flex-start; gap: 10px; font-size: 14px; color: #1a1a1a; margin: 6px 0 4px; }
+.checkbox-row input { margin-top: 3px; width: 16px; height: 16px; }
+
+.word-suggestions { margin: 10px 0; display: grid; gap: 6px; }
+.word-row { display: flex; align-items: center; gap: 8px; font-size: 13px; background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 6px; padding: 8px 12px; flex-wrap: wrap; }
+.word-bad { color: #991b1b; background: #fee2e2; padding: 2px 8px; border-radius: 6px; font-weight: 600; }
+.word-arrow { color: #9ca3af; }
+.word-good { color: #065f46; background: #d1fae5; padding: 2px 8px; border-radius: 6px; }

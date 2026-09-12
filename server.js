@@ -2,10 +2,11 @@ const express = require('express');
 const path = require('path');
 const { v4: uuid } = require('uuid');
 const db = require('./db');
-const { sendOne } = require('./lib/mailer');
+const { sendOne, fillPlaceholders } = require('./lib/mailer');
 const { extractEmails } = require('./lib/extractEmails');
 const { isValidFormat, isDisposable, isHardBounce } = require('./lib/validateEmail');
-const { computeSendingHealth } = require('./lib/health');
+const { computeSendingHealth, findSpamWordsInText } = require('./lib/health');
+const { personalizeEmail } = require('./lib/personalize');
 
 const app = express();
 app.use(express.json({ limit: '5mb' }));
@@ -42,6 +43,12 @@ app.post('/api/templates', (req, res) => {
 app.delete('/api/templates/:id', (req, res) => {
   db.get('templates').remove({ id: req.params.id }).write();
   res.json({ ok: true });
+});
+
+app.post('/api/templates/check-words', (req, res) => {
+  const { subject, html } = req.body;
+  const matches = findSpamWordsInText(`${subject || ''} ${html || ''}`);
+  res.json({ matches });
 });
 
 // ---------- Contacts ----------
@@ -192,11 +199,26 @@ app.post('/api/campaign/start', (req, res) => {
         db.get('campaigns').find({ id: campaign.id }).update('skipped', (n) => n + 1).write();
         continue;
       }
-      let logEntry = { id: uuid(), campaignId: campaign.id, email: contact.email, status: 'sent', error: null, sentAt: Date.now() };
+      let logEntry = { id: uuid(), campaignId: campaign.id, email: contact.email, status: 'sent', error: null, sentAt: Date.now(), aiPersonalized: false };
       try {
+        let subject = fillPlaceholders(template.subject, contact);
+        let html = fillPlaceholders(template.html, contact);
+
+        if (settings.aiPersonalizeEmails && settings.anthropicApiKey) {
+          try {
+            const rewritten = await personalizeEmail({ apiKey: settings.anthropicApiKey, subject: template.subject, html: template.html, contact });
+            subject = rewritten.subject;
+            html = rewritten.html;
+            logEntry.aiPersonalized = true;
+          } catch (aiErr) {
+            console.error(`AI personalize failed for ${contact.email}, sending plain version:`, aiErr.message);
+          }
+        }
+
         await sendOne({
           smtp: settings.smtp,
-          template,
+          subject,
+          html,
           contact,
           fromName: settings.smtp.fromName,
           fromEmail: settings.smtp.fromEmail,

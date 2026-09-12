@@ -13,6 +13,7 @@ db.defaults({
   settings: {
     smtp: { host: '', port: 587, secure: false, user: '', pass: '', fromName: '', fromEmail: '' },
     anthropicApiKey: '',
+    aiPersonalizeEmails: false,
     delayMinSec: 8,
     delayMaxSec: 20,
     dailyLimit: 300
