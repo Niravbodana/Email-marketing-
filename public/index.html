@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Neercred Email Marketing</title>
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+<header>
+  <h1>Neercred &mdash; Email Marketing</h1>
+  <nav>
+    <button data-tab="settings" class="tab active">Settings</button>
+    <button data-tab="templates" class="tab">Templates</button>
+    <button data-tab="contacts" class="tab">Contacts</button>
+    <button data-tab="campaign" class="tab">Send Campaign</button>
+  </nav>
+</header>
+
+<main>
+  <section id="tab-settings" class="panel active">
+    <h2>SMTP &amp; Sending Settings</h2>
+    <div class="grid">
+      <label>SMTP Host <input id="smtpHost" placeholder="smtp.gmail.com" /></label>
+      <label>SMTP Port <input id="smtpPort" placeholder="587" /></label>
+      <label>Secure (SSL)? <select id="smtpSecure"><option value="false">No (STARTTLS / 587)</option><option value="true">Yes (SSL / 465)</option></select></label>
+      <label>SMTP User (email) <input id="smtpUser" placeholder="you@neercred.com" /></label>
+      <label>SMTP Password / App Password <input id="smtpPass" type="password" /></label>
+      <label>From Name <input id="fromName" placeholder="Neercred" /></label>
+      <label>From Email <input id="fromEmail" placeholder="you@neercred.com" /></label>
+      <label>Anthropic API Key (optional, for smart extraction) <input id="anthropicKey" type="password" placeholder="sk-ant-..." /></label>
+      <label>Delay between emails: min sec <input id="delayMin" placeholder="8" /></label>
+      <label>Delay between emails: max sec <input id="delayMax" placeholder="20" /></label>
+      <label>Max emails per campaign run <input id="dailyLimit" placeholder="300" /></label>
+    </div>
+    <button id="saveSettings">Save Settings</button>
+    <p class="hint">Tip: Gmail/Outlook block bulk sending fast. For real bulk marketing, use a transactional ESP (SendGrid / Amazon SES / Mailgun / Brevo) SMTP credentials here for far better deliverability, and always set up SPF, DKIM and DMARC on your sending domain.</p>
+    <p id="settingsMsg" class="msg"></p>
+  </section>
+
+  <section id="tab-templates" class="panel">
+    <h2>Templates</h2>
+    <div class="grid">
+      <label>Template Name <input id="tplName" placeholder="Loan Promo - Sept" /></label>
+      <label>Subject <input id="tplSubject" placeholder="Get instant loan approval with Neercred" /></label>
+      <label>Image URL (hosted, e.g. from your website) <input id="tplImage" placeholder="https://neercred.com/assets/promo.jpg" /></label>
+    </div>
+    <label>HTML Body (use {{name}} and {{email}} as placeholders)
+      <textarea id="tplHtml" rows="10" placeholder="&lt;h2&gt;Hi {{name}},&lt;/h2&gt;&lt;p&gt;Your content...&lt;/p&gt;&lt;img src='https://neercred.com/assets/promo.jpg' style='max-width:100%'/&gt;"></textarea>
+    </label>
+    <button id="saveTemplate">Save Template</button>
+    <p id="templateMsg" class="msg"></p>
+    <h3>Saved Templates</h3>
+    <div id="templateList" class="list"></div>
+  </section>
+
+  <section id="tab-contacts" class="panel">
+    <h2>Contacts</h2>
+    <label>Paste raw bulk data (CSV, text, copy-pasted list, anything with emails in it)
+      <textarea id="rawData" rows="8" placeholder="Paste your bulk data here..."></textarea>
+    </label>
+    <button id="extractBtn">Extract Emails</button>
+    <p id="extractMsg" class="msg"></p>
+    <h3>Contact List (<span id="contactCount">0</span>)</h3>
+    <div id="contactList" class="list"></div>
+  </section>
+
+  <section id="tab-campaign" class="panel">
+    <h2>Send Campaign</h2>
+    <label>Template <select id="campaignTemplate"></select></label>
+    <p class="hint">All active (non-suppressed) contacts will be used, one email at a time, with the delay configured in Settings.</p>
+    <button id="startCampaign">Start Sending</button>
+    <button id="stopCampaign" disabled>Stop</button>
+    <div id="campaignStatus" class="msg"></div>
+    <div id="campaignLogs" class="list"></div>
+  </section>
+</main>
+
+<script src="app.js"></script>
+</body>
+</html>
