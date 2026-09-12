@@ -501,6 +501,7 @@ $('extractBtn').addEventListener('click', async () => {
     toast(`Added ${result.addedCount} contact(s)`);
     $('rawData').value = '';
     mini.hidden = true;
+    mini.innerHTML = '';
     loadContacts();
     loadHealth();
     refreshJourney();
