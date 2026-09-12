@@ -7,6 +7,9 @@ document.querySelectorAll('.tab').forEach((btn) => {
     btn.classList.add('active');
     $(`tab-${btn.dataset.tab}`).classList.add('active');
     if (btn.dataset.tab === 'dashboard' && typeof loadDashboard === 'function') loadDashboard();
+    if (btn.dataset.tab === 'campaign' && typeof loadCampaignList === 'function') { loadCampaignList(); loadCampaignTags(); }
+    if (btn.dataset.tab === 'sms' && typeof loadSmsDashboard === 'function') { loadSmsDashboard(); loadSmsContacts(); loadSmsTemplates(); }
+    if (btn.dataset.tab === 'contacts' && typeof loadContacts === 'function') { loadContacts(); loadHealth(); }
   });
 });
 

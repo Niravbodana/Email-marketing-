@@ -736,7 +736,6 @@ app.get('/api/dashboard', async (req, res) => {
   });
 
   // SMS summary (separate channel, same shape idea as email counts)
-  const smsContacts = db.get('smsContacts').value();
   const smsLogs = db.get('smsLogs').value();
   const smsSent = smsLogs.filter((l) => l.status === 'sent').length;
   const smsFailed = smsLogs.filter((l) => l.status === 'failed').length;
