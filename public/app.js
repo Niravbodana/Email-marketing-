@@ -319,10 +319,22 @@ function refreshPreview() {
   }
   const image = $('tplImage').value.trim();
   const imgBlock = image ? `<img src="${esc(image)}" alt="" style="max-width:100%;border-radius:8px;margin:12px 0" />` : '';
-  frame.srcdoc = `<!doctype html><html><body style="font-family:Georgia,serif;padding:18px;color:#2b2118;background:#fffaf2">
-    <p style="font-size:12px;color:#8a7763;margin-top:0">Subject: ${esc(subject)}</p>
+  const doc = `<!doctype html><html><body style="font-family:Georgia,serif;padding:18px;color:#2b2118;background:#fffaf2;margin:0">
     ${imgBlock}${html}
   </body></html>`;
+  const meta = $('tplPreviewMeta');
+  if (meta) meta.textContent = `Subject: ${subject}`;
+  frame.srcdoc = doc;
+  try {
+    const inner = frame.contentDocument;
+    if (inner) {
+      inner.open();
+      inner.write(doc);
+      inner.close();
+    }
+  } catch {
+    // srcdoc is enough when the iframe document is not writable
+  }
 }
 
 ['tplName', 'tplSubject', 'tplHtml', 'tplImage', 'tplCtaText', 'tplCtaUrl'].forEach((id) => {

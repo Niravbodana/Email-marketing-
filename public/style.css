@@ -20,6 +20,8 @@
 
 * { box-sizing: border-box; }
 
+[hidden] { display: none !important; }
+
 html, body { min-height: 100%; }
 
 body {
@@ -607,12 +609,18 @@ button:disabled { background: #cbbba6; cursor: not-allowed; transform: none; box
   gap: 16px;
 }
 
+.preview-meta {
+  margin: 0 0 8px;
+  font-size: 13px;
+  color: var(--ink-soft);
+  font-weight: 700;
+}
 .preview-frame {
   width: 100%;
   min-height: 420px;
   border: 1px solid var(--line);
   border-radius: 12px;
-  background: white;
+  background: #fffaf2;
 }
 
 .sticky-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin: 8px 0; }
