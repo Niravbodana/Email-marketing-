@@ -219,8 +219,8 @@ $('saveTemplate').addEventListener('click', async () => {
     $('tplSubject').value = '';
     $('tplHtml').value = '';
     $('tplImage').value = '';
-    $('tplCtaText').value = '';
-    $('tplCtaUrl').value = '';
+    $('tplCtaText').value = 'Check Your Eligibility';
+    $('tplCtaUrl').value = 'https://neercred.com/apply';
     $('spamWordsResult').innerHTML = '';
     loadTemplates();
   } catch (e) {
