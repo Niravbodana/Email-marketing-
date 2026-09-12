@@ -220,15 +220,16 @@ function renderMeter(health) {
   $('healthMeterBox').innerHTML = `
     <div class="meter-wrap">
       <div class="meter-score-row">
-        <div class="meter-score">${health.score}<span style="font-size:16px;color:#9ca3af">/100</span></div>
+        <div class="meter-score">${health.riskPercent}%<span style="font-size:16px;color:#9ca3af"> spam risk</span></div>
         <div class="meter-rating ${health.ratingColor}">${health.rating}</div>
       </div>
-      <div class="meter-bar-track"><div class="meter-bar-fill ${health.ratingColor}" style="width:${health.score}%"></div></div>
+      <div class="meter-bar-track"><div class="meter-bar-fill ${health.ratingColor}" style="width:${health.riskPercent}%"></div></div>
+      <p class="hint" style="margin-top:-8px;margin-bottom:14px">Safety score: ${health.score}/100 &mdash; jitna kam risk %, utna better.</p>
       <div class="meter-checks">
         ${health.checks.map((c) => `
           <div class="meter-check">
             <span class="icon">${STATUS_ICON[c.status]}</span>
-            <span class="txt"><b>${c.label}</b><span>${c.message}</span></span>
+            <span class="txt"><b>${c.label}${c.weight ? ` <span class="risk-badge ${c.status}">+${c.riskPercent}% risk</span>` : ''}</b><span>${c.message}</span></span>
           </div>
         `).join('')}
       </div>

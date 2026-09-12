@@ -246,10 +246,11 @@ app.get('/api/campaigns', (req, res) => {
 });
 
 // ---------- Dashboard ----------
-app.get('/api/dashboard', (req, res) => {
+app.get('/api/dashboard', async (req, res) => {
   const settings = db.get('settings').value();
   const contacts = db.get('contacts').value();
   const logs = db.get('logs').value();
+  const templates = db.get('templates').value();
 
   const startOfToday = new Date();
   startOfToday.setHours(0, 0, 0, 0);
@@ -287,14 +288,15 @@ app.get('/api/dashboard', (req, res) => {
 
   const totalAttempted = logs.filter((l) => l.status === 'sent' || l.status === 'failed').length;
 
-  const health = computeSendingHealth({
+  const health = await computeSendingHealth({
     settings,
     sentToday,
     totalAttempted,
     bouncedCount: bouncedContacts.length,
     suppressedCount: suppressedContacts.length,
     totalContacts: contacts.length,
-    invalidCount: invalidContacts.length
+    invalidCount: invalidContacts.length,
+    templates
   });
 
   res.json({
