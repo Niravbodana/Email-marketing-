@@ -13,6 +13,7 @@ const { calcCostUsd } = require('./lib/pricing');
 const { addTrackingToLinks } = require('./lib/tracking');
 const { sendSms, testSmsProvider } = require('./lib/smsSender');
 const { extractPhones } = require('./lib/extractPhones');
+const { parseContactFile } = require('./lib/parseContactFile');
 
 const app = express();
 app.use(express.json({ limit: '15mb' }));
@@ -22,25 +23,38 @@ app.use(express.static(path.join(__dirname, 'public')));
 const UPLOADS_DIR = path.join(__dirname, 'public', 'uploads');
 if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true });
 
-const IMAGE_DATA_URL_REGEX = /^data:image\/(png|jpe?g|gif|webp);base64,([a-zA-Z0-9+/=]+)$/;
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
+
+function parseImageDataUrl(dataUrl) {
+  if (typeof dataUrl !== 'string') return null;
+  const match = dataUrl.trim().match(/^data:image\/([a-zA-Z0-9.+-]+)(?:;charset=[^;]+)?;base64,([\s\S]+)$/i);
+  if (!match) return null;
+  const kind = match[1].toLowerCase();
+  const ext = ({ png: 'png', jpeg: 'jpg', jpg: 'jpg', gif: 'gif', webp: 'webp' })[kind];
+  if (!ext) return null;
+  const buffer = Buffer.from(match[2].replace(/\s+/g, ''), 'base64');
+  if (!buffer.length) return null;
+  return { ext, buffer };
+}
 
 // Accepts a pasted/dropped/attached image as a base64 data URL and saves it as a real
 // file under public/uploads, so the template can reference it by a normal URL — the
 // same way as any other hosted image link.
 app.post('/api/uploads/image', (req, res) => {
-  const { dataUrl } = req.body || {};
-  const match = typeof dataUrl === 'string' && dataUrl.match(IMAGE_DATA_URL_REGEX);
-  if (!match) {
+  const parsed = parseImageDataUrl(req.body?.dataUrl);
+  if (!parsed) {
     return res.status(400).json({ error: 'Please attach a PNG, JPG, GIF or WEBP image.' });
   }
-  const ext = match[1] === 'jpeg' ? 'jpg' : match[1];
-  const buffer = Buffer.from(match[2], 'base64');
+  const { ext, buffer } = parsed;
   if (buffer.length > MAX_IMAGE_BYTES) {
     return res.status(400).json({ error: 'Image is too large — max 8MB.' });
   }
   const filename = `${uuid()}.${ext}`;
-  fs.writeFileSync(path.join(UPLOADS_DIR, filename), buffer);
+  try {
+    fs.writeFileSync(path.join(UPLOADS_DIR, filename), buffer);
+  } catch (err) {
+    return res.status(500).json({ error: `Could not save image: ${err.message}` });
+  }
   res.json({ url: `/uploads/${filename}` });
 });
 
@@ -163,9 +177,23 @@ function buildCtaButtonHtml(ctaText, ctaUrl) {
 </div>`;
 }
 
+function isAllowedImageUrl(url) {
+  if (!url) return true;
+  if (/^https?:\/\//i.test(url)) return true;
+  return /^\/uploads\/[a-zA-Z0-9._-]+$/i.test(url);
+}
+
+function absolutizeUploadUrls(html, baseUrl) {
+  return String(html || '').replace(
+    /(\s(?:src|href)=["'])(\/uploads\/[a-zA-Z0-9._-]+)(["'])/gi,
+    (_, prefix, pathPart, suffix) => `${prefix}${baseUrl}${pathPart}${suffix}`
+  );
+}
+
 function buildImageHtml(imageUrl) {
-  if (!imageUrl) return '';
-  return `<img src="${imageUrl}" alt="" style="max-width:100%;border-radius:8px;margin:0 0 16px" />`;
+  if (!imageUrl || !isAllowedImageUrl(imageUrl)) return '';
+  const safe = String(imageUrl).replace(/"/g, '%22');
+  return `<img src="${safe}" alt="" style="max-width:100%;border-radius:8px;margin:0 0 16px" />`;
 }
 
 app.post('/api/templates', (req, res) => {
@@ -176,8 +204,8 @@ app.post('/api/templates', (req, res) => {
   if (ctaUrl && !/^https?:\/\//i.test(ctaUrl)) {
     return res.status(400).json({ error: 'Button link http:// ya https:// se shuru honi chahiye.' });
   }
-  if (imageUrl && !/^https?:\/\//i.test(imageUrl)) {
-    return res.status(400).json({ error: 'Image URL http:// ya https:// se shuru honi chahiye.' });
+  if (imageUrl && !isAllowedImageUrl(imageUrl)) {
+    return res.status(400).json({ error: 'Image URL http(s):// se shuru honi chahiye, ya /uploads/… (attached file).' });
   }
   // The image (if any) goes first, exactly like the live preview builds it, so what you
   // see while writing is what actually gets sent.
@@ -265,6 +293,25 @@ app.get('/api/contacts', (req, res) => {
   res.json(db.get('contacts').value());
 });
 
+function addExtractedContacts(extracted) {
+  const suppression = new Set(db.get('suppression').value());
+  const existing = new Set(db.get('contacts').value().map((c) => c.email));
+  const added = [];
+  extracted.forEach(({ email, name }) => {
+    const key = String(email || '').toLowerCase().trim();
+    if (!key || existing.has(key)) return;
+    let status = 'active';
+    if (suppression.has(key)) status = 'suppressed';
+    else if (!isValidFormat(key)) status = 'invalid';
+    else if (isDisposable(key)) status = 'invalid';
+    const contact = { id: uuid(), email: key, name: name || '', tags: [], status, bounceCount: 0, lastBounceReason: null, addedAt: Date.now() };
+    db.get('contacts').push(contact).write();
+    existing.add(key);
+    added.push(contact);
+  });
+  return added;
+}
+
 app.post('/api/contacts/extract', async (req, res) => {
   const { rawText } = req.body;
   if (!rawText) return res.status(400).json({ error: 'rawText is required' });
@@ -273,22 +320,50 @@ app.post('/api/contacts/extract', async (req, res) => {
   const apiKeyToUse = isBudgetExceeded() ? null : settings.anthropicApiKey;
   const { contacts: extracted, usage } = await extractEmails(rawText, apiKeyToUse);
   recordApiUsage('extraction', usage);
-  const suppression = new Set(db.get('suppression').value());
-  const existing = new Set(db.get('contacts').value().map((c) => c.email));
+  const added = addExtractedContacts(extracted);
+  res.json({ addedCount: added.length, totalExtracted: extracted.length, added });
+});
 
-  const added = [];
-  extracted.forEach(({ email, name }) => {
-    if (existing.has(email)) return;
-    let status = 'active';
-    if (suppression.has(email)) status = 'suppressed';
-    else if (!isValidFormat(email)) status = 'invalid';
-    else if (isDisposable(email)) status = 'invalid';
-    const contact = { id: uuid(), email, name: name || '', tags: [], status, bounceCount: 0, lastBounceReason: null, addedAt: Date.now() };
-    db.get('contacts').push(contact).write();
-    existing.add(email);
-    added.push(contact);
-  });
+const MAX_CONTACT_FILE_BYTES = 8 * 1024 * 1024;
 
+app.post('/api/contacts/preview-file', (req, res) => {
+  const { filename, base64 } = req.body || {};
+  if (!filename || !base64) return res.status(400).json({ error: 'filename and file data are required' });
+  let buffer;
+  try {
+    buffer = Buffer.from(String(base64), 'base64');
+  } catch {
+    return res.status(400).json({ error: 'Could not read that file.' });
+  }
+  if (!buffer.length) return res.status(400).json({ error: 'That file is empty.' });
+  if (buffer.length > MAX_CONTACT_FILE_BYTES) {
+    return res.status(400).json({ error: 'File is too large — max 8MB.' });
+  }
+  if (!/\.(xlsx|xlsm|xls|csv|txt)$/i.test(filename)) {
+    return res.status(400).json({ error: 'Use an Excel (.xlsx/.xls), CSV or TXT file.' });
+  }
+  try {
+    const text = /\.(csv|txt)$/i.test(filename) ? buffer.toString('utf8') : '';
+    const parsed = parseContactFile({ filename, buffer, text });
+    res.json({
+      filename: parsed.filename,
+      sheetNames: parsed.sheetNames,
+      rowCount: parsed.rowCount,
+      totalDetected: parsed.detected.length,
+      detected: parsed.detected.slice(0, 2000)
+    });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.post('/api/contacts/import', (req, res) => {
+  const list = Array.isArray(req.body?.contacts) ? req.body.contacts : [];
+  if (!list.length) return res.status(400).json({ error: 'No people to import.' });
+  const extracted = list
+    .map((c) => ({ email: String(c.email || '').toLowerCase().trim(), name: String(c.name || '').trim() }))
+    .filter((c) => c.email);
+  const added = addExtractedContacts(extracted);
   res.json({ addedCount: added.length, totalExtracted: extracted.length, added });
 });
 
@@ -417,13 +492,13 @@ async function runEmailCampaignLoop(campaign, contacts, template, baseUrl) {
     let logEntry = { id: uuid(), campaignId: campaign.id, templateId: template.id, email: contact.email, status: 'sent', error: null, sentAt: Date.now(), aiPersonalized: false };
     try {
       let subject = fillPlaceholders(template.subject, contact);
-      let html = fillPlaceholders(template.html, contact);
+      let html = absolutizeUploadUrls(fillPlaceholders(template.html, contact), baseUrl);
 
       if (settings.aiPersonalizeEmails && settings.anthropicApiKey && !isBudgetExceeded()) {
         try {
           const rewritten = await personalizeEmail({ apiKey: settings.anthropicApiKey, subject: template.subject, html: template.html, contact });
           subject = rewritten.subject;
-          html = rewritten.html;
+          html = absolutizeUploadUrls(rewritten.html, baseUrl);
           logEntry.aiPersonalized = true;
           recordApiUsage('personalization', rewritten.usage);
         } catch (aiErr) {
@@ -460,7 +535,9 @@ async function runEmailCampaignLoop(campaign, contacts, template, baseUrl) {
       }
     }
     db.get('logs').push(logEntry).write();
-    await new Promise((r) => setTimeout(r, randomDelayMs(settings.delayMinSec, settings.delayMaxSec)));
+    if (contact !== contacts[contacts.length - 1]) {
+      await new Promise((r) => setTimeout(r, randomDelayMs(settings.delayMinSec, settings.delayMaxSec)));
+    }
   }
   db.get('campaigns').find({ id: campaign.id }).assign({ status: 'completed' }).write();
   runningCampaigns.delete(campaign.id);
@@ -490,6 +567,9 @@ app.post('/api/campaign/start', (req, res) => {
 
   const dailyLimit = Number(settings.dailyLimit) || 300;
   const contacts = resolveCampaignContacts({ contactIds, tag, dailyLimit });
+  if (!contacts.length) {
+    return res.status(400).json({ error: 'No active people to email. Add contacts first, or pick people who are not bounced / unsubscribed.' });
+  }
   const baseUrl = `${req.protocol}://${req.get('host')}`;
   const scheduledTime = scheduledAt ? new Date(scheduledAt).getTime() : null;
   const isFuture = scheduledTime && scheduledTime > Date.now();

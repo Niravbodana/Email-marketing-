@@ -357,6 +357,8 @@ button:disabled { background: #cbbba6; cursor: not-allowed; transform: none; box
   display: flex;
   justify-content: space-between;
   align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
   padding: 10px 14px;
   border-bottom: 1px solid #f0e4d0;
   font-size: 13px;
@@ -437,6 +439,23 @@ button:disabled { background: #cbbba6; cursor: not-allowed; transform: none; box
 }
 
 .search-label { max-width: 360px; }
+
+.detected-box { margin-top: 18px; }
+.detected-list { max-height: 280px; }
+.detected-row { display: flex; align-items: center; gap: 10px; }
+.detected-row input { width: 16px; height: 16px; margin: 0; }
+.detected-num { color: var(--muted); font-size: 12px; min-width: 2.2em; }
+
+.personal-send-bar {
+  background: #fff4e6;
+  border: 1px solid #ecc9a4;
+  border-radius: 14px;
+  padding: 12px 14px;
+  margin: 10px 0 12px;
+}
+.personal-send-bar label { margin-bottom: 8px; }
+.list-row input.pick-contact { width: 16px; height: 16px; margin: 0 8px 0 0; }
+.list-row .row-actions { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
 .optional-block summary { cursor: pointer; list-style: none; }
 .optional-block summary::-webkit-details-marker { display: none; }
 .optional-block summary h3 { display: inline; }

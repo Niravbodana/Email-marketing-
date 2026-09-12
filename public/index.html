@@ -292,22 +292,32 @@
       <div>
         <p class="eyebrow">Step 3 · The list</p>
         <h2>Add people to email</h2>
-        <p class="lede">Paste any messy list. The agent pulls emails out, skips unsubscribes, and flags bad addresses.</p>
+        <p class="lede">Paste text, or drop an Excel / CSV / TXT file. The agent finds every email, shows them line by line, then you can mail people one by one.</p>
       </div>
     </div>
 
     <article class="card">
       <label>Paste raw bulk data
-        <textarea id="rawData" rows="8" placeholder="CSV, notes, copy-paste — anything with emails in it — or drag a .csv/.txt file here"></textarea>
+        <textarea id="rawData" rows="8" placeholder="CSV, notes, copy-paste — or drop an .xlsx / .xls / .csv / .txt file here"></textarea>
       </label>
       <div class="btn-row">
         <button type="button" id="extractBtn" class="btn-primary">Extract emails</button>
-        <button type="button" id="attachContactsFileBtn" class="btn-ghost">Attach .csv/.txt file</button>
-        <input id="rawDataFile" type="file" accept=".csv,.txt,text/csv,text/plain" hidden />
+        <button type="button" id="attachContactsFileBtn" class="btn-ghost">Attach Excel / CSV / TXT</button>
+        <input id="rawDataFile" type="file" accept=".xlsx,.xlsm,.xls,.csv,.txt,text/csv,text/plain,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden />
       </div>
       <p id="contactsFileMsg" class="msg"></p>
       <p id="extractMsg" class="msg"></p>
       <div id="extractProcess" class="mini-process" hidden></div>
+      <div id="detectedBox" class="detected-box" hidden>
+        <h3>Detected emails <span class="soft-note" id="detectedMeta"></span></h3>
+        <p class="hint">Uncheck anyone you do not want. Then add them — after that you can email each person one by one.</p>
+        <div id="detectedList" class="list detected-list"></div>
+        <div class="btn-row">
+          <button type="button" id="importDetectedBtn" class="btn-primary">Add selected people</button>
+          <button type="button" id="importAndSendBtn" class="btn-ghost">Add selected & email one by one</button>
+          <button type="button" id="clearDetectedBtn" class="btn-ghost">Clear preview</button>
+        </div>
+      </div>
     </article>
 
     <article class="card">
@@ -324,6 +334,14 @@
       <label class="search-label">Search the list
         <input id="contactSearch" placeholder="email, name, or tag" />
       </label>
+      <div class="personal-send-bar">
+        <label>Template for 1-to-1 send <select id="personalTemplate"></select></label>
+        <div class="btn-row">
+          <button type="button" id="sendSelectedBtn" class="btn-primary">Email selected, one by one</button>
+          <button type="button" id="selectAllContactsBtn" class="btn-ghost">Select all visible</button>
+        </div>
+        <p class="hint">Each selected person gets their own mail with {{name}} / {{email}} filled — not one blast.</p>
+      </div>
       <div id="contactList" class="list"></div>
     </article>
   </section>

@@ -352,7 +352,7 @@ function refreshPreview() {
   if (ctaText && ctaUrl) {
     html += `<div style="text-align:center;margin:28px 0"><a href="${esc(ctaUrl)}" style="background:#c45c26;color:#fff8ee;text-decoration:none;padding:14px 32px;border-radius:8px;font-weight:600;display:inline-block">${esc(ctaText)}</a></div>`;
   }
-  const image = $('tplImage').value.trim();
+  const image = resolveImageUrl($('tplImage').value.trim());
   const imgBlock = image ? `<img src="${esc(image)}" alt="" style="max-width:100%;border-radius:8px;margin:12px 0" />` : '';
   const doc = `<!doctype html><html><body style="font-family:Georgia,serif;padding:18px;color:#2b2118;background:#fffaf2;margin:0">
     ${imgBlock}${html}
@@ -380,12 +380,21 @@ function refreshPreview() {
 // ---------- Template image: attach file, drag & drop, paste ----------
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
 
+function resolveImageUrl(url) {
+  const val = String(url || '').trim();
+  if (!val) return '';
+  if (/^https?:\/\//i.test(val) || /^data:image\//i.test(val)) return val;
+  if (/^\/uploads\//i.test(val)) return `${window.location.origin}${val}`;
+  return val;
+}
+
 function showImagePreview(url) {
   const wrap = $('imagePreviewWrap');
   const img = $('imagePreviewImg');
   if (!wrap || !img) return;
-  if (url) {
-    img.src = url;
+  const resolved = resolveImageUrl(url);
+  if (resolved) {
+    img.src = resolved;
     wrap.hidden = false;
   } else {
     img.src = '';
@@ -416,9 +425,8 @@ async function handleImageFile(file) {
     setLive('Uploading image…', 'busy');
     const dataUrl = await fileToDataUrl(file);
     const result = await api('/api/uploads/image', { method: 'POST', body: JSON.stringify({ dataUrl }) });
-    const fullUrl = `${window.location.origin}${result.url}`;
-    $('tplImage').value = fullUrl;
-    showImagePreview(fullUrl);
+    $('tplImage').value = result.url;
+    showImagePreview(result.url);
     refreshPreview();
     toast('Image attached');
     setLive('Ready', 'good');
@@ -429,16 +437,18 @@ async function handleImageFile(file) {
 }
 
 $('attachImageBtn')?.addEventListener('click', () => $('tplImageFile').click());
-$('tplImageFile')?.addEventListener('change', (e) => handleImageFile(e.target.files[0]));
+$('tplImageFile')?.addEventListener('change', (e) => {
+  handleImageFile(e.target.files[0]);
+  e.target.value = '';
+});
 $('removeImageBtn')?.addEventListener('click', () => {
   $('tplImage').value = '';
   showImagePreview(null);
   refreshPreview();
 });
 $('tplImage')?.addEventListener('input', (e) => {
-  // Manually typed/pasted URL text also drives the small preview, when it looks like one.
   const val = e.target.value.trim();
-  showImagePreview(/^https?:\/\//i.test(val) ? val : null);
+  showImagePreview(/^https?:\/\//i.test(val) || /^\/uploads\//i.test(val) ? val : null);
 });
 
 const imageDropZone = $('imageDropZone');
@@ -479,7 +489,9 @@ async function loadTemplates() {
       <div class="stats" id="stats-${esc(t.id)}">Loading stats…</div>
     </div>`).join('') || '<div class="list-row">No templates yet. Write one above and save it.</div>';
 
-  $('campaignTemplate').innerHTML = templates.map((t) => `<option value="${esc(t.id)}">${esc(t.name)}</option>`).join('');
+  const options = templates.map((t) => `<option value="${esc(t.id)}">${esc(t.name)}</option>`).join('');
+  $('campaignTemplate').innerHTML = options;
+  if ($('personalTemplate')) $('personalTemplate').innerHTML = options;
 
   document.querySelectorAll('.deleteTemplate').forEach((btn) => {
     btn.addEventListener('click', async () => {
@@ -582,10 +594,16 @@ function renderContactRows() {
   $('contactCount').textContent = contactCache.length;
   $('contactList').innerHTML = contacts.map((c) => `
     <div class="list-row">
-      <span>${esc(c.email)} ${c.name ? `(${esc(c.name)})` : ''} — <span class="status-${esc(c.status)}">${esc(c.status)}</span>
-        <span class="tag-editor" data-id="${esc(c.id)}" title="Click to edit tags">${(c.tags || []).length ? esc((c.tags || []).join(', ')) : 'add tags'}</span>
+      <span class="detected-row">
+        <input type="checkbox" class="pick-contact" data-id="${esc(c.id)}" ${c.status === 'active' ? '' : 'disabled'} />
+        <span>${esc(c.email)} ${c.name ? `(${esc(c.name)})` : ''} — <span class="status-${esc(c.status)}">${esc(c.status)}</span>
+          <span class="tag-editor" data-id="${esc(c.id)}" title="Click to edit tags">${(c.tags || []).length ? esc((c.tags || []).join(', ')) : 'add tags'}</span>
+        </span>
       </span>
-      <button data-id="${esc(c.id)}" class="deleteContact btn-ghost" type="button">Remove</button>
+      <span class="row-actions">
+        <button data-id="${esc(c.id)}" class="sendOneContact btn-ghost" type="button" ${c.status === 'active' ? '' : 'disabled'}>Email this person</button>
+        <button data-id="${esc(c.id)}" class="deleteContact btn-ghost" type="button">Remove</button>
+      </span>
     </div>`).join('') || `<div class="list-row">${contactCache.length ? 'No match in the list.' : 'No contacts yet. Paste bulk data above and extract.'}</div>`;
 
   document.querySelectorAll('.deleteContact').forEach((btn) => {
@@ -594,6 +612,10 @@ function renderContactRows() {
       loadContacts();
       refreshJourney();
     });
+  });
+
+  document.querySelectorAll('.sendOneContact').forEach((btn) => {
+    btn.addEventListener('click', () => startPersonalSend([btn.dataset.id]));
   });
 
   document.querySelectorAll('.tag-editor').forEach((el) => {
@@ -662,25 +684,183 @@ function fileToText(file) {
   });
 }
 
+function fileToBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = String(reader.result || '');
+      const comma = result.indexOf(',');
+      resolve(comma >= 0 ? result.slice(comma + 1) : result);
+    };
+    reader.onerror = () => reject(new Error('Could not read that file.'));
+    reader.readAsDataURL(file);
+  });
+}
+
+let detectedCache = [];
+
+function renderDetectedList(items, meta) {
+  detectedCache = items || [];
+  const box = $('detectedBox');
+  if (!box) return;
+  if (!detectedCache.length) {
+    box.hidden = true;
+    $('detectedList').innerHTML = '';
+    return;
+  }
+  box.hidden = false;
+  if ($('detectedMeta')) {
+    $('detectedMeta').textContent = meta || `${detectedCache.length} found`;
+  }
+  $('detectedList').innerHTML = detectedCache.map((c, i) => `
+    <label class="list-row detected-row">
+      <span class="detected-num">${i + 1}.</span>
+      <input type="checkbox" class="pick-detected" data-email="${esc(c.email)}" checked />
+      <span><strong>${esc(c.email)}</strong> ${c.name ? `(${esc(c.name)})` : ''} <span class="soft-note">${esc(c.source || '')}</span></span>
+    </label>
+  `).join('');
+}
+
 async function handleContactsFile(file) {
   if (!file) return;
-  const looksTextLike = file.type.startsWith('text/') || /\.(csv|txt)$/i.test(file.name);
-  if (!looksTextLike) {
-    toast('Please attach a .csv or .txt file', 'error');
+  const name = file.name || 'upload';
+  const ok = /\.(xlsx|xlsm|xls|csv|txt)$/i.test(name) || file.type.startsWith('text/') || /spreadsheet|excel/i.test(file.type);
+  if (!ok) {
+    toast('Please attach Excel (.xlsx/.xls), CSV or TXT', 'error');
+    return;
+  }
+  if (file.size > 8 * 1024 * 1024) {
+    toast('File is too large — max 8MB', 'error');
     return;
   }
   try {
-    const text = await fileToText(file);
-    const box = $('rawData');
-    box.value = box.value ? `${box.value}\n${text}` : text;
-    setMsg('contactsFileMsg', `Loaded ${file.name} (${text.split(/\r?\n/).length} line(s)) — click "Extract emails" to add them.`);
+    setLive('Reading file…', 'busy');
+    showOverlay('Reading your file', 'Finding every email address, row by row', ['Open the file', 'Scan every sheet / line', 'Show detected people']);
+    overlayStep(0);
+    const base64 = await fileToBase64(file);
+    overlayStep(1);
+    const result = await api('/api/contacts/preview-file', {
+      method: 'POST',
+      body: JSON.stringify({ filename: name, base64 })
+    });
+    overlayStep(2);
+    hideOverlay();
+    const sheets = (result.sheetNames || []).length ? ` · sheets: ${result.sheetNames.join(', ')}` : '';
+    setMsg('contactsFileMsg', `Read ${result.filename} — ${result.rowCount} row(s), ${result.totalDetected} email(s) found${sheets}.`);
+    renderDetectedList(result.detected, `${result.totalDetected} email(s)`);
+    if (/\.(csv|txt)$/i.test(name)) {
+      const text = await fileToText(file);
+      const box = $('rawData');
+      box.value = box.value ? `${box.value}\n${text}` : text;
+    }
+    toast(result.totalDetected ? `Found ${result.totalDetected} email(s)` : 'No emails in that file', result.totalDetected ? 'ok' : 'error');
+    setLive(result.totalDetected ? 'Emails found' : 'Ready', result.totalDetected ? 'good' : '');
+  } catch (e) {
+    hideOverlay();
+    toast(e.message, 'error');
+    setLive('Ready');
+  }
+}
+
+$('attachContactsFileBtn')?.addEventListener('click', () => $('rawDataFile').click());
+$('rawDataFile')?.addEventListener('change', (e) => {
+  handleContactsFile(e.target.files[0]);
+  e.target.value = '';
+});
+
+function selectedDetectedContacts() {
+  return [...document.querySelectorAll('.pick-detected:checked')].map((el) => {
+    const email = el.dataset.email;
+    const row = detectedCache.find((c) => c.email === email);
+    return { email, name: row?.name || '' };
+  });
+}
+
+async function importSelectedContacts() {
+  const selected = selectedDetectedContacts();
+  if (!selected.length) {
+    toast('Tick at least one email', 'error');
+    return null;
+  }
+  showOverlay('Adding people', 'Saving selected emails to your list', ['Check the list', 'Skip duplicates', 'Save contacts']);
+  overlayStep(1);
+  const result = await api('/api/contacts/import', { method: 'POST', body: JSON.stringify({ contacts: selected }) });
+  hideOverlay();
+  setMsg('extractMsg', `Added ${result.addedCount} new contact(s) of ${result.totalExtracted} selected.`);
+  toast(`Added ${result.addedCount} contact(s)`);
+  await loadContacts();
+  loadHealth();
+  refreshJourney();
+  const emails = new Set(selected.map((c) => c.email));
+  const ids = contactCache.filter((c) => emails.has(c.email) && c.status === 'active').map((c) => c.id);
+  return { result, ids };
+}
+
+$('importDetectedBtn')?.addEventListener('click', async () => {
+  try {
+    await importSelectedContacts();
+  } catch (e) {
+    hideOverlay();
+    toast(e.message, 'error');
+  }
+});
+
+$('importAndSendBtn')?.addEventListener('click', async () => {
+  try {
+    const imported = await importSelectedContacts();
+    if (!imported?.ids?.length) {
+      if (imported) toast('Those people are already on the list but not active', 'error');
+      return;
+    }
+    startPersonalSend(imported.ids);
+  } catch (e) {
+    hideOverlay();
+    toast(e.message, 'error');
+  }
+});
+
+$('clearDetectedBtn')?.addEventListener('click', () => {
+  renderDetectedList([]);
+  setMsg('contactsFileMsg', '');
+});
+
+async function startPersonalSend(contactIds) {
+  const templateId = $('personalTemplate')?.value || $('campaignTemplate')?.value;
+  if (!templateId) {
+    toast('Save a template first', 'error');
+    return;
+  }
+  if (!contactIds.length) {
+    toast('Pick at least one person', 'error');
+    return;
+  }
+  try {
+    const campaign = await api('/api/campaign/start', {
+      method: 'POST',
+      body: JSON.stringify({ templateId, contactIds })
+    });
+    currentCampaignId = campaign.id;
+    $('startCampaign').disabled = true;
+    $('stopCampaign').disabled = false;
+    setVisualizer('running', 'Sending personally', 'One by one');
+    setLive('Sending emails…', 'busy');
+    openTab('campaign');
+    pollStatus();
+    pollTimer = setInterval(pollStatus, 2500);
+    toast(`Sending to ${campaign.total} person(s), one by one`);
   } catch (e) {
     toast(e.message, 'error');
   }
 }
 
-$('attachContactsFileBtn')?.addEventListener('click', () => $('rawDataFile').click());
-$('rawDataFile')?.addEventListener('change', (e) => handleContactsFile(e.target.files[0]));
+$('sendSelectedBtn')?.addEventListener('click', () => {
+  const ids = [...document.querySelectorAll('.pick-contact:checked')].map((el) => el.dataset.id);
+  startPersonalSend(ids);
+});
+
+$('selectAllContactsBtn')?.addEventListener('click', () => {
+  document.querySelectorAll('.pick-contact:not(:disabled)').forEach((el) => { el.checked = true; });
+});
 
 const rawDataBox = $('rawData');
 if (rawDataBox) {
