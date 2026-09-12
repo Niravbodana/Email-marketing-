@@ -79,8 +79,8 @@ function openTab(name) {
   document.querySelectorAll('.tab').forEach((b) => b.classList.toggle('active', b.dataset.tab === name));
   document.querySelectorAll('.panel').forEach((p) => p.classList.toggle('active', p.id === `tab-${name}`));
   document.querySelectorAll('.journey-step').forEach((s) => s.classList.toggle('active', s.dataset.goto === name));
-  if (name === 'dashboard') loadDashboard();
-  if (name === 'campaign') { loadCampaignList(); loadCampaignTags(); }
+  if (name === 'dashboard') { loadDashboard(); refreshJourney(); }
+  if (name === 'campaign') { loadCampaignList(); loadCampaignTags(); updateCampaignReady(); }
   if (name === 'sms') { loadSmsDashboard(); loadSmsContacts(); loadSmsTemplates(); }
   if (name === 'contacts') { loadContacts(); loadHealth(); }
   if (name === 'templates') { loadTemplates(); refreshPreview(); }
@@ -92,6 +92,14 @@ document.querySelectorAll('.tab').forEach((btn) => {
 
 document.querySelectorAll('.journey-step').forEach((btn) => {
   btn.addEventListener('click', () => openTab(btn.dataset.goto));
+});
+
+document.addEventListener('click', (e) => {
+  const go = e.target.closest('[data-goto]');
+  if (go && !go.classList.contains('journey-step') && !go.classList.contains('tab')) {
+    e.preventDefault();
+    openTab(go.dataset.goto);
+  }
 });
 
 async function api(path, opts) {
@@ -118,6 +126,33 @@ function updateJourneyDone({ hasSmtp, hasTemplate, hasContacts }) {
     const done = (n === '1' && hasSmtp) || (n === '2' && hasTemplate) || (n === '3' && hasContacts) || (n === '4' && hasTemplate && hasContacts && hasSmtp);
     step.classList.toggle('done', !!done);
   });
+}
+
+function renderNextAction({ hasSmtp, hasTemplate, hasContacts }) {
+  const box = $('nextActionBox');
+  if (!box) return;
+  let title = 'Ready to send';
+  let text = 'Mail is connected, a template is saved, and people are on the list.';
+  let tab = 'campaign';
+  let btn = 'Open Send';
+  if (!hasSmtp) {
+    title = 'First: connect the sending inbox';
+    text = 'Add SMTP host, user and password. The agent cannot mail anyone until this works.';
+    tab = 'settings';
+    btn = 'Open Connect';
+  } else if (!hasTemplate) {
+    title = 'Next: write the email';
+    text = 'Save one template with a calm subject and {{name}} so each mail feels personal.';
+    tab = 'templates';
+    btn = 'Open Write';
+  } else if (!hasContacts) {
+    title = 'Next: add people';
+    text = 'Paste any list. The agent extracts emails and skips unsubscribes.';
+    tab = 'contacts';
+    btn = 'Open Contacts';
+  }
+  box.className = 'next-action';
+  box.innerHTML = `<div class="copy"><strong>${esc(title)}</strong><p>${esc(text)}</p></div><button type="button" class="btn-primary" data-goto="${tab}">${esc(btn)}</button>`;
 }
 
 let apiKeys = [];
@@ -439,16 +474,27 @@ $('saveTemplate').addEventListener('click', async () => {
   }
 });
 
-async function loadContacts() {
-  const contacts = await api('/api/contacts');
-  $('contactCount').textContent = contacts.length;
+let contactCache = [];
+
+function filteredContacts() {
+  const q = ($('contactSearch')?.value || '').trim().toLowerCase();
+  if (!q) return contactCache;
+  return contactCache.filter((c) => {
+    const hay = `${c.email} ${c.name || ''} ${(c.tags || []).join(' ')} ${c.status}`.toLowerCase();
+    return hay.includes(q);
+  });
+}
+
+function renderContactRows() {
+  const contacts = filteredContacts();
+  $('contactCount').textContent = contactCache.length;
   $('contactList').innerHTML = contacts.map((c) => `
     <div class="list-row">
       <span>${esc(c.email)} ${c.name ? `(${esc(c.name)})` : ''} — <span class="status-${esc(c.status)}">${esc(c.status)}</span>
         <span class="tag-editor" data-id="${esc(c.id)}" title="Click to edit tags">${(c.tags || []).length ? esc((c.tags || []).join(', ')) : 'add tags'}</span>
       </span>
       <button data-id="${esc(c.id)}" class="deleteContact btn-ghost" type="button">Remove</button>
-    </div>`).join('') || '<div class="list-row">No contacts yet. Paste bulk data above and extract.</div>';
+    </div>`).join('') || `<div class="list-row">${contactCache.length ? 'No match in the list.' : 'No contacts yet. Paste bulk data above and extract.'}</div>`;
 
   document.querySelectorAll('.deleteContact').forEach((btn) => {
     btn.addEventListener('click', async () => {
@@ -460,7 +506,7 @@ async function loadContacts() {
 
   document.querySelectorAll('.tag-editor').forEach((el) => {
     el.addEventListener('click', async () => {
-      const current = contacts.find((c) => c.id === el.dataset.id)?.tags || [];
+      const current = contactCache.find((c) => c.id === el.dataset.id)?.tags || [];
       const input = window.prompt('Tags (comma-separated):', current.join(', '));
       if (input === null) return;
       const tags = input.split(',').map((t) => t.trim()).filter(Boolean);
@@ -469,7 +515,16 @@ async function loadContacts() {
       loadCampaignTags();
     });
   });
-  return contacts;
+}
+
+async function loadContacts() {
+  contactCache = await api('/api/contacts');
+  renderContactRows();
+  return contactCache;
+}
+
+if ($('contactSearch')) {
+  $('contactSearch').addEventListener('input', renderContactRows);
 }
 
 async function loadCampaignTags() {
@@ -478,7 +533,33 @@ async function loadCampaignTags() {
   const current = select.value;
   select.innerHTML = '<option value="">All contacts</option>' + tags.map((t) => `<option value="${esc(t)}">${esc(t)}</option>`).join('');
   if (tags.includes(current)) select.value = current;
+  updateCampaignReady();
 }
+
+async function updateCampaignReady() {
+  const el = $('campaignReadyCount');
+  if (!el) return;
+  try {
+    const contacts = contactCache.length ? contactCache : await api('/api/contacts');
+    const tag = $('campaignTag')?.value || '';
+    const templateId = $('campaignTemplate')?.value || '';
+    const ready = contacts.filter((c) => c.status === 'active' && (!tag || (c.tags || []).includes(tag)));
+    if (!templateId) {
+      el.textContent = `${ready.length} active people on the list — save/select a template to send.`;
+      return;
+    }
+    el.textContent = tag
+      ? `${ready.length} people with tag “${tag}” will get this email.`
+      : `${ready.length} active people will get this email.`;
+  } catch {
+    el.textContent = 'Could not count recipients right now.';
+  }
+}
+
+['campaignTemplate', 'campaignTag'].forEach((id) => {
+  const el = $(id);
+  if (el) el.addEventListener('change', updateCampaignReady);
+});
 
 $('extractBtn').addEventListener('click', async () => {
   const rawText = $('rawData').value.trim();
@@ -916,11 +997,13 @@ async function refreshJourney() {
       api('/api/templates'),
       api('/api/contacts')
     ]);
-    updateJourneyDone({
+    const state = {
       hasSmtp: !!(settings.smtp?.host && settings.smtp?.user),
       hasTemplate: templates.length > 0,
       hasContacts: contacts.length > 0
-    });
+    };
+    updateJourneyDone(state);
+    renderNextAction(state);
   } catch {
     // ignore
   }

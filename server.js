@@ -841,5 +841,5 @@ app.get('/api/dashboard', async (req, res) => {
 });
 
 app.listen(PORT, () => {
-  console.log(`Neercred email marketing tool running at http://localhost:${PORT}`);
+  console.log(`Neercred Email Marketing Agent running at http://localhost:${PORT}`);
 });

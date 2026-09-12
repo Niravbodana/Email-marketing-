@@ -70,8 +70,8 @@ code {
 }
 
 .brand { display: flex; gap: 14px; align-items: center; }
-.brand h1 { margin: 0; font-size: 28px; }
-.brand-sub { margin: 2px 0 0; color: var(--muted); font-size: 13px; }
+.brand h1 { margin: 0; font-size: clamp(20px, 4vw, 26px); line-height: 1.15; max-width: 18ch; }
+.brand-sub { margin: 4px 0 0; color: var(--muted); font-size: 13px; }
 
 .brand-mark {
   width: 46px;
@@ -200,10 +200,16 @@ code {
 .tabs {
   max-width: 1180px;
   margin: 18px auto 0;
-  padding: 0 28px;
+  padding: 6px 28px;
   display: flex;
   gap: 8px;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  position: sticky;
+  top: 0;
+  z-index: 12;
+  background: linear-gradient(180deg, rgba(244, 234, 216, 0.96), rgba(244, 234, 216, 0.88));
+  backdrop-filter: blur(8px);
 }
 
 .tab {
@@ -221,6 +227,11 @@ code {
 .tab.active {
   background: var(--ink);
   color: var(--paper);
+}
+.tab.tab-secondary {
+  margin-left: auto;
+  opacity: 0.72;
+  font-weight: 600;
 }
 
 main {
@@ -380,12 +391,63 @@ button:disabled { background: #cbbba6; cursor: not-allowed; transform: none; box
 .health-card .num { font-size: 22px; font-weight: 800; display: block; font-family: Fraunces, serif; }
 .health-card .label { font-size: 12px; color: var(--muted); }
 
+.next-action {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  background: linear-gradient(135deg, #fff4e4, #f8e6c8);
+  border: 1px solid #ecc9a4;
+  border-radius: 18px;
+  padding: 18px 20px;
+  margin-bottom: 16px;
+  box-shadow: var(--shadow);
+  animation: rise 0.4s ease;
+}
+.next-action.empty { display: none; }
+.next-action .copy strong { display: block; font-family: Fraunces, serif; font-size: 20px; margin-bottom: 4px; }
+.next-action .copy p { margin: 0; color: var(--ink-soft); }
+.next-action button { margin: 0; white-space: nowrap; }
+
+.sms-footnote {
+  font-size: 13px;
+  color: var(--muted);
+  margin: -8px 0 22px;
+}
+.text-link {
+  background: none;
+  color: var(--terracotta);
+  padding: 0;
+  margin: 0;
+  box-shadow: none;
+  text-decoration: underline;
+  font-weight: 700;
+}
+.text-link:hover { transform: none; }
+
+.ready-count {
+  background: #fff4e6;
+  border: 1px dashed #ecc9a4;
+  border-radius: 12px;
+  padding: 10px 12px;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--ink-soft);
+  margin: 4px 0 12px;
+}
+
+.search-label { max-width: 360px; }
+.optional-block summary { cursor: pointer; list-style: none; }
+.optional-block summary::-webkit-details-marker { display: none; }
+.optional-block summary h3 { display: inline; }
+
 .big-cards {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   gap: 12px;
   margin: 8px 0 22px;
 }
+.big-cards.email-cards { grid-template-columns: repeat(4, 1fr); }
 .big-cards.four { grid-template-columns: repeat(4, 1fr); }
 
 .big-card {
@@ -804,18 +866,20 @@ button:disabled { background: #cbbba6; cursor: not-allowed; transform: none; box
 }
 
 @media (max-width: 900px) {
-  .grid, .split-meters, .compose-grid, .big-cards, .big-cards.four, .health-grid {
+  .grid, .split-meters, .compose-grid, .big-cards, .big-cards.four, .big-cards.email-cards, .health-grid {
     grid-template-columns: 1fr 1fr;
   }
   .api-key-row { grid-template-columns: 1fr; }
+  .next-action { flex-direction: column; align-items: flex-start; }
 }
 
 @media (max-width: 640px) {
   .topbar, .journey, .tabs, main { padding-left: 16px; padding-right: 16px; }
-  .grid, .split-meters, .compose-grid, .big-cards, .big-cards.four, .health-grid {
+  .grid, .split-meters, .compose-grid, .big-cards, .big-cards.four, .big-cards.email-cards, .health-grid {
     grid-template-columns: 1fr;
   }
   h2 { font-size: 26px; }
+  .brand h1 { max-width: none; }
 }
 
 @media (prefers-reduced-motion: reduce) {
