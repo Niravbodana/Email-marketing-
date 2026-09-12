@@ -8,6 +8,7 @@ const { isValidFormat, isDisposable, isHardBounce } = require('./lib/validateEma
 const { computeSendingHealth, findSpamWordsInText } = require('./lib/health');
 const { personalizeEmail } = require('./lib/personalize');
 const { testApiKey } = require('./lib/apiKeyCheck');
+const { calcCostUsd } = require('./lib/pricing');
 const { addTrackingToLinks } = require('./lib/tracking');
 const { sendSms, testSmsProvider } = require('./lib/smsSender');
 const { extractPhones } = require('./lib/extractPhones');
@@ -19,6 +20,52 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 const PORT = process.env.PORT || 4000;
 const runningCampaigns = new Map(); // campaignId -> { stop: boolean }
+
+// ---------- API cost tracking ----------
+function getTotalSpentUsd() {
+  return db.get('apiUsage').value().reduce((sum, u) => sum + u.costUsd, 0);
+}
+
+function recordApiUsage(feature, usage) {
+  if (!usage) return 0;
+  const costUsd = calcCostUsd(usage.model, usage.inputTokens, usage.outputTokens);
+  db.get('apiUsage').push({
+    id: uuid(),
+    feature,
+    model: usage.model,
+    inputTokens: usage.inputTokens,
+    outputTokens: usage.outputTokens,
+    costUsd,
+    createdAt: Date.now()
+  }).write();
+  return costUsd;
+}
+
+function isBudgetExceeded() {
+  const budget = db.get('settings.apiBudget').value();
+  if (!budget || !budget.maxUsd) return false;
+  return getTotalSpentUsd() >= budget.maxUsd;
+}
+
+app.get('/api/usage/summary', (req, res) => {
+  const usage = db.get('apiUsage').value();
+  const budget = db.get('settings.apiBudget').value() || { maxUsd: 0 };
+  const spentUsd = usage.reduce((sum, u) => sum + u.costUsd, 0);
+  const byFeature = {};
+  usage.forEach((u) => {
+    byFeature[u.feature] = (byFeature[u.feature] || 0) + u.costUsd;
+  });
+  const maxUsd = Number(budget.maxUsd) || 0;
+  const percentUsed = maxUsd ? Math.min(999, Math.round((spentUsd / maxUsd) * 1000) / 10) : 0;
+  res.json({
+    spentUsd: Math.round(spentUsd * 10000) / 10000,
+    maxUsd,
+    remainingUsd: maxUsd ? Math.max(0, Math.round((maxUsd - spentUsd) * 10000) / 10000) : null,
+    percentUsed,
+    callCount: usage.length,
+    byFeature
+  });
+});
 
 // ---------- Settings ----------
 app.get('/api/settings', (req, res) => {
@@ -177,7 +224,9 @@ app.post('/api/contacts/extract', async (req, res) => {
   if (!rawText) return res.status(400).json({ error: 'rawText is required' });
 
   const settings = db.get('settings').value();
-  const extracted = await extractEmails(rawText, settings.anthropicApiKey);
+  const apiKeyToUse = isBudgetExceeded() ? null : settings.anthropicApiKey;
+  const { contacts: extracted, usage } = await extractEmails(rawText, apiKeyToUse);
+  recordApiUsage('extraction', usage);
   const suppression = new Set(db.get('suppression').value());
   const existing = new Set(db.get('contacts').value().map((c) => c.email));
 
@@ -323,14 +372,16 @@ async function runEmailCampaignLoop(campaign, contacts, template, baseUrl) {
       let subject = fillPlaceholders(template.subject, contact);
       let html = fillPlaceholders(template.html, contact);
 
-      if (settings.aiPersonalizeEmails && settings.anthropicApiKey) {
+      if (settings.aiPersonalizeEmails && settings.anthropicApiKey && !isBudgetExceeded()) {
         try {
           const rewritten = await personalizeEmail({ apiKey: settings.anthropicApiKey, subject: template.subject, html: template.html, contact });
           subject = rewritten.subject;
           html = rewritten.html;
           logEntry.aiPersonalized = true;
+          recordApiUsage('personalization', rewritten.usage);
         } catch (aiErr) {
           console.error(`AI personalize failed for ${contact.email}, sending plain version:`, aiErr.message);
+          recordApiUsage('personalization', aiErr.usage);
         }
       }
 
@@ -684,6 +735,62 @@ app.get('/api/dashboard', async (req, res) => {
     templates
   });
 
+  // SMS summary (separate channel, same shape idea as email counts)
+  const smsContacts = db.get('smsContacts').value();
+  const smsLogs = db.get('smsLogs').value();
+  const smsSent = smsLogs.filter((l) => l.status === 'sent').length;
+  const smsFailed = smsLogs.filter((l) => l.status === 'failed').length;
+
+  // Queue: campaigns not finished yet (scheduled, or running with more left to send)
+  const emailCampaigns = db.get('campaigns').value();
+  const smsCampaigns = db.get('smsCampaigns').value();
+  const scheduledCampaigns = emailCampaigns.filter((c) => c.status === 'scheduled');
+  const runningEmailCampaigns = emailCampaigns.filter((c) => c.status === 'running');
+  const runningSmsCampaigns = smsCampaigns.filter((c) => c.status === 'running');
+  const inQueueCount =
+    scheduledCampaigns.reduce((sum, c) => sum + c.total, 0) +
+    runningEmailCampaigns.reduce((sum, c) => sum + (c.total - c.sent - c.failed - c.skipped), 0) +
+    runningSmsCampaigns.reduce((sum, c) => sum + (c.total - c.sent - c.failed - c.skipped), 0);
+
+  const usageSummary = (() => {
+    const usage = db.get('apiUsage').value();
+    const budget = settings.apiBudget || { maxUsd: 0 };
+    const spentUsd = usage.reduce((sum, u) => sum + u.costUsd, 0);
+    const maxUsd = Number(budget.maxUsd) || 0;
+    const percentUsed = maxUsd ? Math.min(999, Math.round((spentUsd / maxUsd) * 1000) / 10) : 0;
+    return { spentUsd: Math.round(spentUsd * 10000) / 10000, maxUsd, percentUsed };
+  })();
+
+  const alerts = [];
+  if (!settings.smtp.host && !settings.smtp.user) {
+    alerts.push({ id: 'smtp-unconfigured', severity: 'info', title: 'Email account set nahi hai', message: 'Abhi tak koi SMTP email connect nahi kiya.', fix: 'Settings tab me jaake apna email host/user/password bharo aur "Test Connection" dabao.' });
+  } else if (settings.smtpStatus?.ok === false) {
+    alerts.push({ id: 'smtp-down', severity: 'critical', title: 'Email connection kaam nahi kar raha', message: settings.smtpStatus.message || 'SMTP connection fail ho raha hai.', fix: 'Settings tab me jaake SMTP host/port/password check karo, phir "Test Connection" dobara dabao.' });
+  }
+  (settings.apiKeys || []).forEach((k) => {
+    if (k.key && k.status?.ok === false) {
+      alerts.push({ id: `apikey-${k.id}`, severity: 'warning', title: `${k.name || 'API'} key invalid hai`, message: k.status.message || 'Yeh API key kaam nahi kar rahi.', fix: 'Settings tab me sahi key daalo aur "Test" dabao.' });
+    }
+  });
+  if (settings.sms?.accountSid && settings.smsStatus?.ok === false) {
+    alerts.push({ id: 'sms-down', severity: 'warning', title: 'SMS provider connect nahi ho raha', message: settings.smsStatus.message || 'Twilio connection fail ho raha hai.', fix: 'Settings tab me SMS Account SID/Auth Token check karo aur "Test SMS Connection" dabao.' });
+  }
+  if (usageSummary.maxUsd > 0 && usageSummary.percentUsed >= 100) {
+    alerts.push({ id: 'budget-exceeded', severity: 'critical', title: 'API budget khatam ho gaya', message: `$${usageSummary.spentUsd} spent, limit $${usageSummary.maxUsd} thi. AI personalization/extraction ab kaam nahi karega jab tak limit nahi badhao.`, fix: 'Settings me "API Cost & Budget" section me max limit badhao, ya wait karo agle mahine tak.' });
+  } else if (usageSummary.maxUsd > 0 && usageSummary.percentUsed >= (settings.apiBudget?.alertThresholdPct || 80)) {
+    alerts.push({ id: 'budget-warning', severity: 'warning', title: 'API budget khatam hone wala hai', message: `Ab tak $${usageSummary.spentUsd} spend ho chuka hai, limit $${usageSummary.maxUsd} ki hai (${usageSummary.percentUsed}%).`, fix: 'Settings me budget check karo — chaho to limit badha do taaki AI features rukein na.' });
+  }
+  if (health.riskPercent >= 45) {
+    alerts.push({ id: 'spam-risk-high', severity: 'warning', title: 'Spam risk high hai', message: `Abhi spam risk ${health.riskPercent}% hai (Danger level).`, fix: 'Dashboard ke "Spam Risk Meter" section me neeche scroll karke red/yellow items dekho aur unhe fix karo.' });
+  }
+  const recentCompleted = emailCampaigns.filter((c) => c.status === 'completed' && c.total > 0).slice(-3);
+  recentCompleted.forEach((c) => {
+    const failRate = c.failed / c.total;
+    if (failRate > 0.3) {
+      alerts.push({ id: `campaign-fail-${c.id}`, severity: 'warning', title: 'Pichli campaign me bahot fail hui', message: `${c.failed} out of ${c.total} emails fail hui (${Math.round(failRate * 100)}%).`, fix: 'SMTP connection aur contact list check karo — Send Campaign tab me us campaign ke logs dekho.' });
+    }
+  });
+
   res.json({
     counts: {
       total: contacts.length,
@@ -692,7 +799,10 @@ app.get('/api/dashboard', async (req, res) => {
       bounced: bouncedContacts.length,
       invalid: invalidContacts.length,
       suppressed: suppressedContacts.length,
-      sentToday
+      sentToday,
+      smsSent,
+      smsFailed,
+      inQueue: inQueueCount
     },
     lists: {
       pending: pendingContacts.slice(0, 200),
@@ -701,7 +811,9 @@ app.get('/api/dashboard', async (req, res) => {
       invalid: invalidContacts.slice(0, 200),
       suppressed: suppressedContacts.slice(0, 200)
     },
-    health
+    health,
+    usage: usageSummary,
+    alerts
   });
 });
 

@@ -102,3 +102,18 @@ button:disabled { background: #9ca3af; cursor: not-allowed; }
 .export-link:hover { text-decoration: underline; }
 .tag-editor { display: inline-block; margin-left: 8px; font-size: 12px; color: #6b7280; background: #f3f4f6; padding: 1px 8px; border-radius: 10px; cursor: pointer; }
 .tag-editor:hover { background: #e5e7eb; }
+
+.alert-box { border-radius: 10px; padding: 12px 16px; margin-bottom: 10px; display: flex; gap: 10px; align-items: flex-start; }
+.alert-box.critical { background: #fef2f2; border: 1px solid #fecaca; }
+.alert-box.warning { background: #fffbeb; border: 1px solid #fde68a; }
+.alert-box.info { background: #eff6ff; border: 1px solid #bfdbfe; }
+.alert-box .icon { font-size: 18px; }
+.alert-box .body b { display: block; font-size: 14px; margin-bottom: 2px; }
+.alert-box .body .msg-line { font-size: 13px; color: #4b5563; margin: 0 0 4px; }
+.alert-box .body .fix-line { font-size: 13px; color: #1f2937; }
+.alert-box .body .fix-line b { display: inline; font-size: 13px; }
+
+.cost-meter { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px; margin-bottom: 20px; }
+.cost-meter .cost-row { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px; }
+.cost-meter .cost-amount { font-size: 24px; font-weight: 800; }
+.cost-meter .cost-limit { font-size: 13px; color: #6b7280; }

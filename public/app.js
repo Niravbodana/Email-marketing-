@@ -100,6 +100,19 @@ async function loadSettings() {
 
   $('webhookUrl').value = `${window.location.origin}/api/leads/webhook`;
   $('webhookSecret').value = s.leadWebhookSecret || '';
+
+  $('apiMaxBudget').value = s.apiBudget?.maxUsd ?? 10;
+  $('apiAlertThreshold').value = s.apiBudget?.alertThresholdPct ?? 80;
+  loadBudgetSpentInfo();
+}
+
+async function loadBudgetSpentInfo() {
+  try {
+    const u = await api('/api/usage/summary');
+    $('budgetSpentInfo').textContent = `Ab tak spend: $${u.spentUsd} of $${u.maxUsd} (${u.percentUsed}%) — ${u.callCount} API call(s).`;
+  } catch {
+    // ignore
+  }
 }
 
 $('testSmtpBtn').addEventListener('click', async () => {
@@ -167,11 +180,16 @@ $('saveSettings').addEventListener('click', async () => {
           delayMinSec: Number($('smsDelayMin').value) || 5,
           delayMaxSec: Number($('smsDelayMax').value) || 15,
           dailyLimit: Number($('smsDailyLimit').value) || 200
+        },
+        apiBudget: {
+          maxUsd: Number($('apiMaxBudget').value) || 0,
+          alertThresholdPct: Number($('apiAlertThreshold').value) || 80
         }
       })
     });
     $('settingsMsg').textContent = 'Settings saved.';
     $('settingsMsg').className = 'msg';
+    loadBudgetSpentInfo();
   } catch (e) {
     $('settingsMsg').textContent = e.message;
     $('settingsMsg').className = 'msg error';
@@ -462,17 +480,68 @@ document.querySelectorAll('.dash-tab').forEach((btn) => {
   });
 });
 
+const ALERT_ICON = { critical: '🚨', warning: '⚠️', info: 'ℹ️' };
+let seenAlertIds = new Set();
+
+function renderAlerts(alerts) {
+  if (!alerts.length) {
+    $('alertsBox').innerHTML = '';
+    return;
+  }
+  $('alertsBox').innerHTML = alerts.map((a) => `
+    <div class="alert-box ${a.severity}">
+      <span class="icon">${ALERT_ICON[a.severity] || 'ℹ️'}</span>
+      <div class="body">
+        <b>${a.title}</b>
+        <p class="msg-line">${a.message}</p>
+        <p class="fix-line"><b>Kya karo:</b> ${a.fix}</p>
+      </div>
+    </div>
+  `).join('');
+
+  // Best-effort browser notification for NEW critical alerts (only while this tab/browser
+  // is open and permission is granted — this is not a phone push notification).
+  if ('Notification' in window) {
+    const newCritical = alerts.filter((a) => a.severity === 'critical' && !seenAlertIds.has(a.id));
+    if (newCritical.length) {
+      if (Notification.permission === 'default') {
+        Notification.requestPermission();
+      }
+      if (Notification.permission === 'granted') {
+        newCritical.forEach((a) => new Notification(a.title, { body: `${a.message} — ${a.fix}` }));
+      }
+    }
+  }
+  seenAlertIds = new Set(alerts.map((a) => a.id));
+}
+
+function renderCostMeter(usage) {
+  const color = usage.percentUsed >= 100 ? 'bad' : usage.percentUsed >= 80 ? 'warn' : 'good';
+  $('costMeterBox').innerHTML = `
+    <div class="cost-meter">
+      <div class="cost-row">
+        <span class="cost-amount">$${usage.spentUsd.toFixed(4)}</span>
+        <span class="cost-limit">of $${usage.maxUsd} limit (${usage.percentUsed}%)</span>
+      </div>
+      <div class="meter-bar-track"><div class="meter-bar-fill ${color}" style="width:${Math.min(100, usage.percentUsed)}%"></div></div>
+    </div>`;
+}
+
 async function loadDashboard() {
   dashData = await api('/api/dashboard');
   const c = dashData.counts;
   $('cardTotal').textContent = c.total;
   $('cardPending').textContent = c.pending;
+  $('cardQueue').textContent = c.inQueue;
   $('cardSent').textContent = c.sent;
+  $('cardSmsSent').textContent = c.smsSent;
   $('cardBounced').textContent = c.bounced;
   $('cardInvalid').textContent = c.invalid;
   $('cardSuppressed').textContent = c.suppressed;
   renderMeter(dashData.health);
   renderDashList();
+  renderAlerts(dashData.alerts || []);
+  renderCostMeter(dashData.usage || { spentUsd: 0, maxUsd: 0, percentUsed: 0 });
 }
 
 setInterval(() => {

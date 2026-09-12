@@ -63,6 +63,14 @@ A parallel "📱 SMS Marketing" tab: paste raw text to extract phone numbers, cr
 
 **Important honest limitation**: there is no free public API to check India's National DND (NDNC) registry, so this app cannot verify DND status itself. Real Indian promotional SMS requires a **DLT (Distributed Ledger Technology)-registered** provider and template (e.g. MSG91, Kaleyra, Gupshup) — DND-registered numbers are then blocked automatically at the telecom operator level. Twilio (wired up by default here) is not DLT-registered for India, so it's suitable for testing / non-Indian numbers only. For real India-wide loan SMS marketing, swap the provider call in `lib/smsSender.js` for a DLT-compliant provider's API.
 
+## API cost tracking & budget limit
+
+Every Anthropic API call (email extraction, AI personalization) is logged with its real token usage and cost (Claude Sonnet 5 pricing: $2/million input tokens, $10/million output tokens). Settings has an **API Cost & Budget** section — set a max $ limit and a warn-at percentage. The Dashboard shows a live spend meter; once spend reaches the limit, AI extraction and personalization automatically stop being used (falling back to plain regex extraction / template-only sending) so the bill can't run away — nothing gets blocked, it just stops calling the paid API until you raise the limit.
+
+## Combined Dashboard + alerts
+
+The Dashboard now shows email sent/pending/in-queue counts alongside SMS sent, in one place, plus an **Alerts** panel at the top that turns backend problems into plain-language "what's wrong + what to do" cards — SMTP disconnected, an invalid API key, budget almost/fully used, high spam risk, or a campaign with a lot of failures. If your browser grants notification permission, a new critical alert also fires a browser notification (best-effort, browser-tab-based — not a phone push notification).
+
 ## Data storage
 
 All settings, templates, contacts, and logs are stored locally in `data/db.json` (gitignored). Nothing is sent anywhere except: your configured SMTP server (to send mail) and, only if you set an Anthropic API key, the Anthropic API (to extract emails from text you paste).

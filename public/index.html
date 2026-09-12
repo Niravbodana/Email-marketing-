@@ -23,6 +23,8 @@
   <section id="tab-dashboard" class="panel active">
     <h2>📊 Dashboard — sab kuch ek jagah</h2>
 
+    <div id="alertsBox"></div>
+
     <div class="big-cards">
       <div class="big-card neutral">
         <span class="big-num" id="cardTotal">0</span>
@@ -30,11 +32,19 @@
       </div>
       <div class="big-card pending">
         <span class="big-num" id="cardPending">0</span>
-        <span class="big-label">⏳ Pending (bhejni baaki)</span>
+        <span class="big-label">⏳ Emails Pending</span>
+      </div>
+      <div class="big-card neutral">
+        <span class="big-num" id="cardQueue">0</span>
+        <span class="big-label">📤 In Queue (scheduled/sending)</span>
       </div>
       <div class="big-card good">
         <span class="big-num" id="cardSent">0</span>
-        <span class="big-label">✅ Sent (successful)</span>
+        <span class="big-label">✅ Emails Sent</span>
+      </div>
+      <div class="big-card good">
+        <span class="big-num" id="cardSmsSent">0</span>
+        <span class="big-label">📱 SMS Sent</span>
       </div>
       <div class="big-card bad">
         <span class="big-num" id="cardBounced">0</span>
@@ -49,6 +59,10 @@
         <span class="big-label">🚫 Unsubscribed</span>
       </div>
     </div>
+
+    <h3>💰 API Spend</h3>
+    <p class="hint">Anthropic API (extraction + AI personalization) par kitna spend hua hai — jab limit ke paas pahunchoge to yahan aur alert me warning aa jayegi, recharge/limit-badhaao ka time pata chal jayega.</p>
+    <div id="costMeterBox"></div>
 
     <h3>🩺 Spam Risk Meter</h3>
     <p class="hint">Yeh meter un sab wajahon ko check karta hai jinse email spam me jaati hai ya account risky ho jaata hai — har cheez ka apna % risk contribution dikhta hai.</p>
@@ -85,6 +99,14 @@
     <p class="hint">Default me Anthropic key hai (email extraction aur AI personalization ke liye use hoti hai). Chaho to "+ Add API Key" se aur keys bhi add kar sakte ho (future providers ke liye) — har ek ke saamne green/red status dikhega.</p>
     <div id="apiKeyList"></div>
     <button id="addApiKeyBtn">+ Add API Key</button>
+
+    <h3 style="margin-top:28px">💰 API Cost & Budget</h3>
+    <p class="hint">Anthropic API paid hai (token ke hisaab se charge hota hai). Yahan max limit set karo — jab spend us limit ke paas/upar pahunchega, Dashboard pe warning aayegi aur limit cross hote hi AI features (extraction/personalization) automatically ruk jayenge taaki bill na badhe, jab tak tum limit na badhao.</p>
+    <div class="grid">
+      <label>Max budget ($) <input id="apiMaxBudget" placeholder="10" /></label>
+      <label>Warn at (% of budget) <input id="apiAlertThreshold" placeholder="80" /></label>
+    </div>
+    <p id="budgetSpentInfo" class="hint"></p>
 
     <h3 style="margin-top:28px">📨 Sending Behaviour</h3>
     <div class="grid">
